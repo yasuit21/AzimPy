@@ -1,11 +1,12 @@
 # AzimPy
 Estimate horizontal orientation of ocean-bottom seismograph
 
-[`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source module to estimate horizontal orientation of ocean-bottom seismometer. 
+[`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source module for estimating the horizontal orientation of ocean-bottom seismographs. 
 This module uses Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
-One of the main classes `OrientOBS` was inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
-This module also provides other classes and functions to perform statistical analysis of circular data and to plot the estimated azimuth with uncertainty.
+One of the main classes `OrientOBS` is inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
+This module also provides other classes and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
+The author has tested the package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
 
 ## Usage
 
@@ -43,6 +44,19 @@ obs.find_stream(
     distmin=5., distmax=120.,
 )
 ```
+
+## Installation
+
+### [Recommended] Using `conda` environment and `pip` locally
+
+```
+$ conda create -n azimpy-test python=3.9 pip ipython
+$ conda activate azimpy-test
+(azimpy-test) $ git clone https://github.com/yasuit21/AzimPy.git
+(azimpy-test) $ cd 
+(azimpy-test) $ python -m pip install .
+```
+
 
 ### References
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012. 

@@ -57,6 +57,21 @@ $ conda activate azimpy-test
 (azimpy-test) $ python -m pip install .
 ```
 
+### Optional installation : [`rpy2`](https://rpy2.github.io/)
+
+Note that the installation takes time.
+
+```
+(azimpy-test) $ pip install rpy2
+(azimpy-test) $ conda install r-essentials r-base r-circular
+```
+
+Then, set environental variables.
+```
+export R_HOME=/path/to/envs/azimpy-test/lib/R
+export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
+```
+
 
 ### References
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012. 

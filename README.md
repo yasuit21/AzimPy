@@ -1,6 +1,8 @@
 # AzimPy
 Estimate horizontal orientation of ocean-bottom seismograph
 
+[![DOI](https://zenodo.org/badge/521535371.svg)](https://zenodo.org/badge/latestdoi/521535371)
+
 [`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source module for estimating the horizontal orientation of ocean-bottom seismographs. 
 This module uses Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
 One of the main classes `OrientOBS` is inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
@@ -44,9 +46,9 @@ obs.find_stream(
 )
 ```
 
-## Installation
+## How to install
 
-### [Recommended] Using `conda` environment and `pip` locally
+### [Recommended] Using `conda` environment and `pip install` locally
 
 ```
 $ conda create -n azimpy-test python=3.9 pip ipython
@@ -58,17 +60,23 @@ $ conda activate azimpy-test
 
 ### Optional installation : [`rpy2`](https://rpy2.github.io/)
 
-Note that the installation takes time.
+#### Installation of `R`
+Note that this installation will take time.
 ```
-(azimpy-test) $ pip install rpy2
 (azimpy-test) $ conda install r-essentials r-base r-circular
 ```
-
 Then, set environental variables.
 ```
 export R_HOME=/path/to/envs/azimpy-test/lib/R
 export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
 ```
+
+#### Installation of `rpy2` via `pip`
+```
+(azimpy-test) $ python -m pip install rpy2
+(azimpy-test) $ python -c "import azimpy"
+```
+If no warning or error is returned, the installation has been completed.
 
 ### Use case
 <!-- ### Cite -->
@@ -95,6 +103,6 @@ export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
 - The supported format is only `SAC`, but you may use the other formats.
 - The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. 
 - The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
-- `rpy2` is an optional wrapper to run `circular` in `R` language, which performs `Kuiper test`.
+- `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs `Kuiper test`.
 - 
     

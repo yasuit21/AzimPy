@@ -6,7 +6,6 @@ This module uses Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran 
 One of the main classes `OrientOBS` is inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
 This module also provides other classes and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
-The author has tested the package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
 
 ## Usage
 
@@ -53,14 +52,13 @@ obs.find_stream(
 $ conda create -n azimpy-test python=3.9 pip ipython
 $ conda activate azimpy-test
 (azimpy-test) $ git clone https://github.com/yasuit21/AzimPy.git
-(azimpy-test) $ cd 
+(azimpy-test) $ cd AzimPy
 (azimpy-test) $ python -m pip install .
 ```
 
 ### Optional installation : [`rpy2`](https://rpy2.github.io/)
 
 Note that the installation takes time.
-
 ```
 (azimpy-test) $ pip install rpy2
 (azimpy-test) $ conda install r-essentials r-base r-circular
@@ -72,6 +70,11 @@ export R_HOME=/path/to/envs/azimpy-test/lib/R
 export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
 ```
 
+### Use case
+<!-- ### Cite -->
+<!-- If you use this package to present the results, please cite the  -->
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Shinohara, M., and Ito, Y., 
+    in revision at *Geophys. J. Int.*
 
 ### References
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012. 
@@ -87,6 +90,11 @@ export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
     ocean‐bottom sensors. Seismol. Res. Lett., 90, 
     2175–2187. https://doi.org/10.1785/0220190093 
     
-### Use case
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Shinohara, M.,
-    and Ito, Y., in revision, Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*
+    
+## Note
+- The supported format is only `SAC`, but you may use the other formats.
+- The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. 
+- The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
+- `rpy2` is an optional wrapper to run `circular` in `R` language, which performs `Kuiper test`.
+- 
+    

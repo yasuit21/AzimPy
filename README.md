@@ -27,9 +27,6 @@ obs.query_events(
     orderby='time-asc',
 )
 
-## Read channel table of seismic station
-obs.read_chtbl('/path/to/channeltable.txt')
-
 ## Compute Rayleigh-wave polarization for each event
 ## Raw SAC data should be located in '/path/to/datadir'
 obs.find_stream(
@@ -100,9 +97,12 @@ If no warning or error is returned, the installation has been completed.
     
     
 ## Note
-- The supported format is only `SAC`, but you may use the other formats.
+- The supported format is only `SAC`, but you may use some other formats.
 - The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. 
 - The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
 - `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs `Kuiper test`.
 - 
     
+## License
+
+This project is licensed under the MIT License, see the `LICENSE` for details.

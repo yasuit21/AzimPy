@@ -24,7 +24,6 @@ analysis of circular data and to plot the estimated azimuth with uncertainty.
 ... orderby='time-asc',
 )
 
->>> obs.read_chtbl('/path/to/channeltable.txt')
 >>> obs.find_stream(
 ... '/path/to/datadir',
 ... output_path='/path/to/output',
@@ -52,14 +51,34 @@ analysis of circular data and to plot the estimated azimuth with uncertainty.
     ocean‐bottom sensors. Seismol. Res. Lett., 90, 
     2175–2187. https://doi.org/10.1785/0220190093 
 
+
+This file is a part of `AzimPy`.
+This project is licensed under the MIT License.
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) 2022 Yasunori Sawaki
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------
 """
 
-## Estimate OBS sensor orientations by a Rayleigh-wave polarization method
-## 20210616 Yasunori Sawaki
-## 20220204 Longer time window for output streams  
-## 20220206 Add Kuiper test for `OrientSingle`  V-test
-## 20220316 Modify instrument, Correct BAZ header in RT comps. 
-## 20220731 `__init__.py` for main classes
 
 from .orientation import OrientOBS
 from .plot import OrientAnalysis, plotCC

@@ -1,10 +1,34 @@
-## Estimate OBS sensor orientations by a Rayleigh-wave polarization method
-## 20210616 Yasunori Sawaki
-## 20220204 Longer time window for output streams  
-## 20220206 Add Kuiper test for `OrientSingle`  V-test
-## 20220316 Modify instrument, Correct BAZ header in RT comps. 
-## 20220731 `orientation.py` for main classes
+"""
+Estimate OBS sensor orientations by the Rayleigh-wave polarization method.
+- Client class for downloading seismograms and computing CC
+- A class for circular statistics (single station)
 
+This file is a part of `AzimPy`.
+This project is licensed under the MIT License.
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) 2022 Yasunori Sawaki
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------
+"""
 
 import sys
 import os
@@ -13,6 +37,7 @@ import time
 from datetime import datetime, timedelta #, timezone
 from functools import partial, reduce 
 from concurrent import futures
+from tkinter.dnd import DndHandler
 from typing import Union, List, Tuple
 import operator
 import pickle
@@ -92,7 +117,6 @@ class OrientOBS(Client):
         ... orderby='time-asc',
         )
         
-        >>> obs.read_chtbl('/path/to/channeltable.txt')
         >>> obs.find_stream(
         ... '/path/to/datadir',
         ... output_path='/path/to/output',
@@ -272,7 +296,7 @@ class OrientOBS(Client):
                 pd.to_datetime(timeseries, format='%Y%m%d%H%M%S'),
                 columns=['origin_time']
             )
-            ## UTC->JST
+            ## Convert from UTC to the local timezone of observed data
             timeseries += timedelta(hours=self.timezone)  
 
             self.df_events = pd.concat(
@@ -301,7 +325,8 @@ class OrientOBS(Client):
         cc_asterisk=True,
         taper_type='cosine',
         outformat='dataframe',
-        max_workers=2,
+        max_workers=4,
+        ignore_BadEpicDist_warning=False,
     ):
         '''Find stream to pick up earthquakes from event calalog.
         This method performs Rayleigh wave polarization analysis for each event.
@@ -318,6 +343,7 @@ class OrientOBS(Client):
             Directory path in which to store output results.
         polezero_fpath:
             The path to the polezero file to deconvolve instrumental response.
+            If set to None, the instrumental response will not be deconvolved.
         fileformat: str = `*.*.%y%m%d%H%M.sac`
             Fileformat of input waveforms (three components) in `parent_path`. 
             You can use `datetime` format with asterisks `*`. For instance,
@@ -361,9 +387,10 @@ class OrientOBS(Client):
         taper_type='cosine'
         outformat str = 'dataframe'
             Output format of the result 
-        max_workers: int = 2
-            Number of processes in parallel computing
-            
+        max_workers: int = 4
+            Number of threads in computing
+        ignore_BadEpicDist_warning: bool
+            If ignoring a warning regarding `BadEpicDist`. 
         '''
         
         self.parent_path = parent_path
@@ -387,7 +414,7 @@ class OrientOBS(Client):
         stream_stats = ob.read(
             str([*self.parent_path.glob(f'*.{fileformat.split(".")[-1]}')][0])
         )[0].stats
-        chtbl = self.chtbl.loc[stream_stats.station]
+        # chtbl = self.chtbl.loc[stream_stats.station]
         
         output = np.zeros([len(self.events), 5]) * np.nan
         
@@ -402,20 +429,16 @@ class OrientOBS(Client):
             dphi=dphi,
             cc_asterisk=cc_asterisk,
             taper_type=taper_type,
-            stream_stats=stream_stats,
-            chtbl=chtbl, 
+            # stream_stats=stream_stats,
+            # chtbl=chtbl, 
             stdir=stdir,
         )
-        
-        # if max_workers > 1:
-            
-        nw_submit = max_workers
 
         with tqdm(self.events, unit='event') as pbar:
 
-            gen = iter(range(nw_submit)) 
             future_list = []
-            with futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # with futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            with futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
                 for i_eve, event in enumerate(pbar):
 
                     # pbar.set_description(new_starttime.strftime('ST %Y%m%d %H:%M:%S'))
@@ -425,7 +448,8 @@ class OrientOBS(Client):
                             event, stream_stats
                         )
                     except BadEpicDist:
-                        warnings.warn('Epicentral distance out of range. Ignore this event.')
+                        if not ignore_BadEpicDist_warning:
+                            warnings.warn('Epicentral distance out of range. Ignore this event.')
                         continue
                         
                     stream = ob.Stream()
@@ -433,19 +457,25 @@ class OrientOBS(Client):
                     for filetime in list_datetime_for_datafile:
                         # fileformat = f"{self.parent_path.name}.*.{filetime}.sac"
                         filename_obsdata = filetime.strftime(fileformat)
-                        try:
-                            stream += ob.read(str(self.parent_path/filename_obsdata))
-                        except Exception:
-                            warnings.warn('Event period is out of range. Ignore this event.')
-                            continue
+                        filepath = self.parent_path/filename_obsdata
+                        ## Check if the number of files are 1+ or 0 
+                        ## HACK: Path.exists() cannot be used because * is included
+                        if len(set(self.parent_path.glob(filename_obsdata))):
+                            stream += ob.read(filepath)
 
                     ## Merge the loaded traces into each channel (component)
                     stream.merge()
                     
-                    ## If including a pressure gauge, it is excluded from `stream`
+                    ## HACK: If including a pressure gauge, it is excluded from `stream`
                     for tr in stream.select(channel='PG')+stream.select(channel='DP'):
                         stream.remove(tr)
-
+                    
+                    ## check for masked array
+                    for tr in stream:
+                        if if_masked := bool(np.ma.count_masked(tr.data)):
+                            break
+                    if if_masked:
+                        continue
                         
                     future = executor.submit(
                         estimate_azimuth_partial, 
@@ -455,24 +485,16 @@ class OrientOBS(Client):
                         stream=stream,
                     )
                     future_list.append(future)
-
-                    try:
-                        next(gen)
-                    except StopIteration as e:
                         
-                        for future in future_list:
-                            i_eve, output_event = future.result()
-                            output[i_eve] = output_event
-
-                        future_list = []
-
-                        gen = iter(range(nw_submit))
-                        time.sleep(1)
-                
-                if future_list:
-                    for future in future_list:
+                for future in futures.as_completed(future_list):
+                    try:
                         i_eve, output_event = future.result()
+                    except BadStreamError as e:
+                        continue
+                    else:
                         output[i_eve] = output_event
+                    finally:
+                        pbar.update(1)
         
         ## Output results of CC    
         filename = f'{output_path.name}_{round(1./freqmax):03d}_{round(1./freqmin):03d}.pickle'
@@ -489,7 +511,11 @@ class OrientOBS(Client):
                 ], axis=1
             )
             
-            df_output.to_pickle(output_path/filename)
+            filepath = output_path/filename
+            if filepath.exists():
+                os.remove(filepath)
+            df_output.to_pickle(filepath)
+
             return df_output
             
         elif outformat=='ndarray':
@@ -510,8 +536,8 @@ class OrientOBS(Client):
         dphi,
         cc_asterisk,
         taper_type,
-        stream_stats, 
-        chtbl, 
+        # stream_stats, 
+        # chtbl, 
         stdir
     ):
         
@@ -540,12 +566,13 @@ class OrientOBS(Client):
         stream.taper(max_percentage=0.1, type=taper_type)
 
         ## sensitivity correction
-        ## Check if properly manupulated   
-        stream.simulate(
-            paz_remove=read_paz(polezero_fpath), #self.polezero_dict.get(int(period))
-            pre_filt=(self.freqmin*0.5, self.freqmin, self.freqmax, self.freqmax*2.0),
-            sacsim=True,
-        )
+        ## Check if properly manupulated
+        if polezero_fpath is not None: 
+            stream.simulate(
+                paz_remove=read_paz(polezero_fpath), #self.polezero_dict.get(int(period))
+                pre_filt=(self.freqmin*0.5, self.freqmin, self.freqmax, self.freqmax*2.0),
+                sacsim=True,
+            )
             
         for tr in stream:
             if 'H1' in tr.stats.channel:
@@ -556,17 +583,15 @@ class OrientOBS(Client):
         stored_stream = stream.copy()
         stream.trim(starttime=params['t1'], endtime=params['t2'])
 
+        ## XXX causing unreference errors
+        ## if data period out of range...
         try:
             tr_U = stream.select(channel='*U').copy()[0]
             U_Hilbert = -np.imag(signal.hilbert(tr_U))  # do not overwrite
-        except IndexError:  ## if data period out of range
-            print(params['t1'])
-            # continue
-        except ValueError as e:
-            print(params['t1'])
-            # continue
-
-        S_uu = np.sum(U_Hilbert*U_Hilbert)
+        except (IndexError, ValueError):
+            raise BadStreamError()
+        else:
+            S_uu = np.sum(U_Hilbert*U_Hilbert)
 
         orientation_ranges = np.arange(0, 360, dphi)
         cc = np.zeros([len(orientation_ranges), 2]) * np.nan
@@ -598,7 +623,12 @@ class OrientOBS(Client):
         ])
 
         ## Save the rotated stream with the max CC* value
-        stored_stream.trim(starttime=stored_stream[0].stats.origintime)
+        ## XXX HACK: output SAC has different data points...
+        ## 
+        stored_stream.trim(
+            starttime=stored_stream[0].stats.origintime,
+            endtime=stored_stream[0].stats.t2+timedelta(minutes=2)
+        )
         st_rot = stored_stream.select(channel='[N,E]').copy()
         st_rot.rotate(
             method='NE->RT', 
@@ -655,12 +685,16 @@ class OrientOBS(Client):
                 )
             )
         else:
+            ## List of filenames with time
+            ## Starttime: t0_reshaped; Endtime: t2_reshaped
+            ## Counts every one hour
+            t0_reshaped = self._reshape_datetime(otime)
+            t2_reshaped = self._reshape_datetime(t2+timedelta(minutes=2))
+            hr_diff = round(t2_reshaped-t0_reshaped) // 3600
             list_datetime_for_datafile = [
-                self._reshape_datetime(t1),
-                self._reshape_datetime(t2)
+                t0_reshaped + timedelta(hours=dh) 
+                for dh in range(1+hr_diff)
             ]
-            if list_datetime_for_datafile[1] == list_datetime_for_datafile[0]:
-                list_datetime_for_datafile.pop()
         
         params = dict(
             arrival=estimated_arrival,
@@ -879,6 +913,9 @@ class OrientSingle():
 ## Exception classess
 
 class BadEpicDist(Exception):
+    pass
+
+class BadStreamError(Exception):
     pass
 
 class _OrientSingleError(Exception):

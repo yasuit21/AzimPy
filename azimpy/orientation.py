@@ -471,6 +471,9 @@ class OrientOBS(Client):
                         stream.remove(tr)
                     
                     ## check for masked array
+                    if not len(stream):
+                        continue
+                    if_masked = True
                     for tr in stream:
                         if if_masked := bool(np.ma.count_masked(tr.data)):
                             break

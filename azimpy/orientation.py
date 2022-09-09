@@ -33,11 +33,9 @@ SOFTWARE.
 import sys
 import os
 from pathlib import Path
-import time
 from datetime import datetime, timedelta #, timezone
 from functools import partial, reduce 
 from concurrent import futures
-from tkinter.dnd import DndHandler
 from typing import Union, List, Tuple
 import operator
 import pickle
@@ -60,15 +58,14 @@ import obspy.signal
 from obspy.clients.fdsn import Client
 from astropy.stats import circstats
 
+from .params import kuiper_level_dict
+from .utils import read_chtbl, read_paz
 from .rstats import (
     circdist, 
     angle_stats,
     circMedian,
     VALID_RPY2,
 )
-from .params import kuiper_level_dict
-from .utils import read_chtbl, read_paz
-
 if VALID_RPY2:
     from .rstats import kuiper_test
 
@@ -147,7 +144,11 @@ class OrientOBS(Client):
         """
         
         super().__init__(base_url, **webclient)
-        self.timezone = timezone
+        self._timezone = timezone
+
+    @property
+    def timezone(self):
+        return self._timezone
         
     def read_chtbl(self, filepath):
         """A method to read a station channel table.
@@ -169,7 +170,6 @@ class OrientOBS(Client):
         starttime:datetime, endtime:datetime, 
         minmagnitude=6.0,
         maxdepth=150.0,
-        
         **kw_events,
     ):
         '''Query earthquake events from catalog.
@@ -297,7 +297,7 @@ class OrientOBS(Client):
                 columns=['origin_time']
             )
             ## Convert from UTC to the local timezone of observed data
-            timeseries += timedelta(hours=self.timezone)  
+            timeseries += timedelta(hours=self._timezone)  
 
             self.df_events = pd.concat(
                 [timeseries, df_events[['latitude','longitude','depth','mag']]], 
@@ -323,10 +323,12 @@ class OrientOBS(Client):
         time_after_arrival=600.,
         dphi=0.25,
         cc_asterisk=True,
-        taper_type='cosine',
         outformat='dataframe',
         max_workers=4,
         ignore_BadEpicDist_warning=False,
+        filter_kw=dict(corners=2,zerophase=True),
+        decimate_kw=dict(factor=10,strict_length=True),
+        taper_kw=dict(max_percentage=0.1,type='cosine'),
     ):
         '''Find stream to pick up earthquakes from event calalog.
         This method performs Rayleigh wave polarization analysis for each event.
@@ -384,13 +386,19 @@ class OrientOBS(Client):
         cc_asterisk: bool, default to True
             If False, the general cross-correlation will be
             used to determine the orientation.
-        taper_type='cosine'
         outformat str = 'dataframe'
             Output format of the result 
         max_workers: int = 4
             Number of threads in computing
         ignore_BadEpicDist_warning: bool
             If ignoring a warning regarding `BadEpicDist`. 
+        filter_kw: dict, dict(corners=2,zerophase=True)
+            A kwarg passed to `Stream.filter()`.
+            Corner frequencies for the bandpass are already passed.
+        decimate_kw: dict, dict(factor=10,strict_length=True)
+            A kwarg passed to `Stream.decimate()`.
+        taper_kw: dict, dict(max_percentage=0.1,type='cosine')
+            A kwarg passed to `Stream.taper()`
         '''
         
         self.parent_path = parent_path
@@ -410,9 +418,9 @@ class OrientOBS(Client):
         self.time_before_arrival = time_before_arrival
         self.time_after_arrival = time_after_arrival
         
-        
+        suffix = fileformat.split(".")[-1]
         stream_stats = ob.read(
-            str([*self.parent_path.glob(f'*.{fileformat.split(".")[-1]}')][0])
+            str([*self.parent_path.glob(f'*.{suffix}')][0])
         )[0].stats
         # chtbl = self.chtbl.loc[stream_stats.station]
         
@@ -426,9 +434,13 @@ class OrientOBS(Client):
         estimate_azimuth_partial = partial(
             self._estimate_azimuth_for_each_event,
             polezero_fpath=polezero_fpath,
+            udcomp=udcomp,
+            hcomps=hcomps,
             dphi=dphi,
             cc_asterisk=cc_asterisk,
-            taper_type=taper_type,
+            filter_kw=filter_kw,
+            decimate_kw=decimate_kw,
+            taper_kw=taper_kw,
             # stream_stats=stream_stats,
             # chtbl=chtbl, 
             stdir=stdir,
@@ -473,7 +485,7 @@ class OrientOBS(Client):
                     ## check for masked array
                     if not len(stream):
                         continue
-                    if_masked = True
+                    if_masked = True   # to avoid unreferenced error
                     for tr in stream:
                         if if_masked := bool(np.ma.count_masked(tr.data)):
                             break
@@ -536,9 +548,13 @@ class OrientOBS(Client):
         params, 
         stream,
         polezero_fpath,
+        udcomp,
+        hcomps,
         dphi,
         cc_asterisk,
-        taper_type,
+        filter_kw,
+        decimate_kw,
+        taper_kw,
         # stream_stats, 
         # chtbl, 
         stdir
@@ -546,7 +562,7 @@ class OrientOBS(Client):
         
         for tr in stream:
             tr.stats.update({
-                'origintime': event.origins[0].time + timedelta(hours=self.timezone),
+                'origintime': event.origins[0].time + timedelta(hours=self._timezone),
                 'depth': event.origins[0].depth/1000,
                 'mag': event.magnitudes[0].mag,
                 'gcarc': params['epicdist'],
@@ -560,13 +576,11 @@ class OrientOBS(Client):
         stream.detrend(type='linear')
         stream.filter(
             'bandpass', 
-            #**self.freq_range,
             freqmin=self.freqmin, freqmax=self.freqmax,
-            corners=2, zerophase=True,
+            **filter_kw,
         )
-
-        stream.decimate(factor=10, strict_length=True)            
-        stream.taper(max_percentage=0.1, type=taper_type)
+        stream.decimate(**decimate_kw)            
+        stream.taper(**taper_kw)
 
         ## sensitivity correction
         ## Check if properly manupulated
@@ -578,9 +592,9 @@ class OrientOBS(Client):
             )
             
         for tr in stream:
-            if 'H1' in tr.stats.channel:
+            if hcomps[0] in tr.stats.channel:
                 tr.stats.channel = 'N'
-            if 'H2' in tr.stats.channel:
+            if hcomps[1] in tr.stats.channel:
                 tr.stats.channel = 'E'
 
         stored_stream = stream.copy()
@@ -589,7 +603,7 @@ class OrientOBS(Client):
         ## XXX causing unreference errors
         ## if data period out of range...
         try:
-            tr_U = stream.select(channel='*U').copy()[0]
+            tr_U = stream.select(channel=f'*{udcomp}').copy()[0]
             U_Hilbert = -np.imag(signal.hilbert(tr_U))  # do not overwrite
         except (IndexError, ValueError):
             raise BadStreamError()
@@ -600,10 +614,10 @@ class OrientOBS(Client):
         cc = np.zeros([len(orientation_ranges), 2]) * np.nan
 
         for i_phi, ϕ in enumerate(orientation_ranges):
-            α = (params['baz'] - ϕ) % 360
+            baz_apparent = (params['baz'] - ϕ) % 360
 
             st_rot = stream.select(channel='[N,E]').copy()
-            st_rot.rotate(method='NE->RT', back_azimuth=α)
+            st_rot.rotate(method='NE->RT', back_azimuth=baz_apparent)
 
             tr_R = st_rot.select(channel='R')[0]
 
@@ -618,10 +632,11 @@ class OrientOBS(Client):
         ## Search for the optimal orientation
         ## If cc_asterisk == False, maximum `C_ru` will be searched.
         argmax = np.argmax(cc[:,int(cc_asterisk)])  
-
+        phi_optimal = orientation_ranges[argmax]
+        CCs_optimal = cc[argmax]
 
         output_event = np.array([
-            orientation_ranges[argmax], *cc[argmax], 
+            phi_optimal, *CCs_optimal, 
             params['baz'], params['epicdist']
         ])
 
@@ -635,14 +650,14 @@ class OrientOBS(Client):
         st_rot = stored_stream.select(channel='[N,E]').copy()
         st_rot.rotate(
             method='NE->RT', 
-            back_azimuth=(params['baz']-orientation_ranges[argmax])%360
+            back_azimuth=(params['baz']-phi_optimal)%360
         )
         for tr in st_rot:
             tr.stats.update({
                 'back_azimuth': params['baz'], # corrected on Mar 17, 2022
-                'rotation_from_north': orientation_ranges[argmax],
-                'CC': cc[argmax][0],
-                'CC2': cc[argmax][1],
+                'rotation_from_north': phi_optimal,
+                'CC': CCs_optimal[0],
+                'CC2': CCs_optimal[1],
             })
             if 'T' in tr.stats.channel:
                 tr.stats['rotation_from_north'] = (tr.stats['rotation_from_north']+90)%360
@@ -662,8 +677,8 @@ class OrientOBS(Client):
         origin = event.origins[0]
         otime = origin.time
         
-        if self.timezone:
-            otime += timedelta(hours=self.timezone)  # JST timezone
+        if self._timezone:
+            otime += timedelta(hours=self._timezone)  # JST timezone
         
         epi_dist, _, baz = ob.geodetics.gps2dist_azimuth(
             origin.latitude, origin.longitude,
@@ -727,10 +742,48 @@ class OrientOBS(Client):
     
 class OrientSingle():
     def __init__(
-        self, df_orient:pd.DataFrame, stationname, if_selection:bool,
-        min_CC=0.5, weight_CC=True, K=5.0, bootstrap_iteration=2000, alpha_CI=0.05,
+        self, 
+        df_orient:pd.DataFrame, 
+        stationname, 
+        if_selection:bool,
+        min_CC=0.5, 
+        weight_CC=True, 
+        K=5.0, 
+        bootstrap_iteration:int =5000, 
+        bootstrap_fraction_in_percent:float =100.,
+        alpha_CI=0.05,
         kuiper_level=0.05,
     ):
+        """
+        Perform circular statistics for each station.
+
+        Parameters:
+        -----------
+        df_orient: pd.DataFrame
+            A result dataframe by `OrientOBS`
+        stationname: str
+            A station name for the result dataframe
+        if_selection: bool
+            Whether to perform bootstrap resampling
+        min_CC: float = 0.5
+            Minimum cross-correlation values 
+            to be considered for analysis
+        weight_CC: bool = True
+            Whether to weight CC values
+        K: bool = 5.0
+            Data within `K` times median absolute deviation
+        bootstrap_iteration: int = 5000
+            Iterration numbers for bootstrap resampling
+        bootstrap_fraction_in_percent:float = 100.
+            How much percent of numbers of data is used for 
+            bootstrap resampling.
+        alpha_CI: float = 0.05
+            `(1-alpha_CI)*100`% confidence intervals for
+            orientation uncertainty 
+        kuiper_level:float = 0.05
+            The threshold p value in the Kuiper test.
+        """
+
         ## Internal params
         self._min_num_eq = 6
         self._goodstation = True
@@ -752,161 +805,189 @@ class OrientSingle():
         self.std3 = np.nan
         self.CMAD = np.nan
         self._KUIPER_THRESHOLD = kuiper_level_dict[kuiper_level]  #(15%,10%,5%,2.5%,1%)
+
+        if if_selection:
+            if (10. <= bootstrap_fraction_in_percent <= 100.):
+                bootstrap_fraction_in_percent *= 0.01
+            else:
+                raise ValueError('`bootstrap_fraction_in_percent` must be in 10%')
+
+            df_orient = df_orient.query(f"CC>={min_CC}")
+
+        self.num_eq = len(df_orient)
+
+        if self.num_eq == 0:
+            raise IndexError('No data has been extracted')
+
+        self.df_orient = df_orient
         
         
         try:  ## _OrientSingleError
-
-            ## Selection 1
-            if if_selection:
-                df_orient = df_orient[df_orient['CC']>=min_CC]
-
-            if len(df_orient) == 0:
-                raise IndexError('No data has been extracted')
-
-            self.df_orient = df_orient
-            self.num_eq = len(self.df_orient)
-            if self.num_eq < self._min_num_eq:
-                self._goodstation = False
-                raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
-
-            data_all = self.df_orient[['orientation','CC','CC*']].values
-            data_all = data_all[~np.isnan(data_all[:,0])]
-            self.ar_orient = data_all[:,0]
-            self.ar_cc = data_all[:,1]
-
-
-            ## Rayleigh test - Calculate p-value
-            self.p_Rayleigh = circstats.rayleightest(np.deg2rad(self.ar_orient))
-            if self.p_Rayleigh >= 0.01:
-                PvalueError(f'Rayleigh test returned large p-value ({self.p_Rayleigh:.2e}>=0.01), and this is excluded')
-
-            ## Average, Variance
-            self.circmean, self.circvar = angle_stats(self.ar_orient, weights=self.ar_cc**2)
-            
-            ## Kuiper test 
-            if VALID_RPY2 and (not if_selection):
-                self.Kuiper_statistic = np.nan
-                
-                try:
-                    out = kuiper_test(self.ar_orient, level=kuiper_level)
-                    # print(stationname, *[out1[0] for out1 in out])
-                    self.Kuiper_statistic = out[1][0]
-                    if self.Kuiper_statistic < self._KUIPER_THRESHOLD:
-                        PvalueError(
-                            'Kuiper test (5%) did not reject MULL hypothesis '
-                            +f'({self.Kuiper_statistic:.3f}<{self._KUIPER_THRESHOLD}), and this is excluded'
-                        )
-
-                except (AttributeError, ValueError) as e:
-                    pass
-
-            ## Weighted circular median for all data points
-            self.median = circMedian(self.ar_orient, weights=self.ar_cc**2)
-
-            ## Median Absolute Deviation
-            self.MAD = np.median(np.abs(circdist(self.ar_orient,self.median)))
-
-
-            boot_weight = [
-                np.ones(len(self.ar_orient)),  ## if not perform bootstrap
-                self.ar_cc
-            ][weight_CC]
-
-            ## Selection 2
-            if if_selection:
-
-                ## Extract ϕ in [-K*MAD, K*SMAD]
-                SMAD = K * self.MAD
-                deviation = circdist(self.ar_orient, self.median)
-                self.ar_orient = self.ar_orient[(np.abs(deviation)<=SMAD)]
-
-                self.num_eq = len(self.df_orient)
-                if self.num_eq < self._min_num_eq:
-                    self._goodstation = False
-                    raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
-
-
-                ## Bootstrap resampling and calculate sample mean
-                datasize = len(self.ar_orient) 
-                
-                if weight_CC:
-                    self.ar_orient = np.array([
-                        _weight_circmean(
-                            data_all[:,:2][np.random.randint(len(self.ar_orient),size=datasize)]
-                        ) for _ in range(bootstrap_iteration)
-                    ])
-
-                    self.ar_orient, boot_weight = self.ar_orient.T
-                    self.ar_orient %= 360
-
-                else:
-                    self.ar_orient = np.array([
-                        np.rad2deg(
-                            circstats.circmean(
-                                np.deg2rad(np.random.choice(self.ar_orient, size=len(self.ar_orient))),
-                            )
-                        ) % 360 for _ in range(bootstrap_iteration)
-                    ])
-
-                ## Average, Variance
-                self.circmean, self.circvar = angle_stats(self.ar_orient, weights=boot_weight) 
-
-                ## Median 
-                self.median = circMedian(self.ar_orient, weights=boot_weight)
-                
-                ## 2.5% (p1) 97.5% (p2) percentiles
-                p1, p2 = np.quantile(
-                    circdist(self.ar_orient, self.circmean),
-                    q=[alpha_CI/2, 1-alpha_CI/2]
-                )
-                self.CI = p2 - p1
-                self.p1, self.p2 = (np.array([p1, p2]) + self.circmean) % 360
-
-                
-                ## Kuiper test to check vonmises dist.
-                # _, self._fpp = kuiper(
-                #     np.deg2rad((self.ar_orient-180)), 
-                #     partial(stats.vonmises.cdf, kappa=self.kappa, loc=np.deg2rad(self.circmean-180))
-                # )
-                # if self._fpp < 0.05:
-                #     PvalueError(f'Kuiper test denied vonmises distribution ({self._fpp:.2e}<0.05), and this is excluded')
-                
-            
-            ## Circular Mean Absolute Deviation
-            self.CMAD = np.inf
-            for _dphi in np.arange(0,360,0.5):
-                # vtmp = np.sum(np.abs(circdist(self.ar_orient, _dphi))*boot_weight)
-                vtmp = np.sum((circdist(self.ar_orient, _dphi))**2*boot_weight)
-                if vtmp < self.CMAD:
-                    self.CMAD = vtmp
-                    self.arcmean = _dphi
-            for _dphi in self.arcmean+np.arange(-5,5,0.02):
-                _dphi %= 360
-                vtmp = np.sum((circdist(self.ar_orient, _dphi))**2*boot_weight)
-                if vtmp < self.CMAD:
-                    self.CMAD = vtmp
-                    self.arcmean = _dphi
-            self.CMAD /= np.sum(boot_weight)
-
-            ## Fitting to von Mises distribution - (kappa, mu, scale)
-            self.kappa, self._mean_vonMises, _ = stats.vonmises.fit(
-                np.deg2rad(self.ar_orient-180), 
-                floc=np.deg2rad(self.circmean-180), 
-                fscale=1
+            self._perform_circular(
+                if_selection,
+                weight_CC, 
+                K, 
+                bootstrap_iteration, 
+                bootstrap_fraction_in_percent,
+                alpha_CI,
+                kuiper_level,
             )
-
-            self.std1 = np.rad2deg(np.sqrt(-2*np.log(1-self.circvar)))
-            # self.CI2_vonMises = np.rad2deg(alpha_CI[1]/np.sqrt((1-self.circvar)*self.kappa))
-            self.CI1_vonMises = np.rad2deg(stats.vonmises.ppf(1.-alpha_CI/2, kappa=self.kappa))
-            self.std2 = np.std(circdist(self.ar_orient, self.arcmean, deg=True))
-            self.std3 = takagi_error(self.ar_orient, boot_weight)
-        
         except _OrientSingleError:
             pass
         
     def __str__(self):
         _str = f'{self.name}, mean={self.circmean:5.1f}, median={self.median:5.1f}, std={self.std1:5.1f}'
         return _str
+
+    def _perform_circular(
+        self,
+        if_selection,
+        weight_CC, 
+        K, 
+        bootstrap_iteration, 
+        bootstrap_fraction_in_percent,
+        alpha_CI,
+        kuiper_level,
+    ):
+        """Internal method to perform circular statistics.
+        """
+        
+        ## Selection 1
+        if self.num_eq < self._min_num_eq:
+            self._goodstation = False
+            raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
+
+        data_all = self.df_orient[['orientation','CC','CC*']].values
+        data_all = data_all[~np.isnan(data_all[:,0])]
+        self.ar_orient = data_all[:,0]
+        self.ar_cc = data_all[:,1]
+
+
+        ## Rayleigh test - Calculate p-value
+        self.p_Rayleigh = circstats.rayleightest(np.deg2rad(self.ar_orient))
+        if self.p_Rayleigh >= 0.01:
+            PvalueError(f'Rayleigh test returned large p-value ({self.p_Rayleigh:.2e}>=0.01), and this is excluded')
+
+        ## Average, Variance
+        self.circmean, self.circvar = angle_stats(self.ar_orient, weights=self.ar_cc**2)
+        
+        ## Kuiper test 
+        if VALID_RPY2 and (not if_selection):
+            self.Kuiper_statistic = np.nan
+            
+            try:
+                out = kuiper_test(self.ar_orient, level=kuiper_level)
+                # print(stationname, *[out1[0] for out1 in out])
+                self.Kuiper_statistic = out[1][0]
+                if self.Kuiper_statistic < self._KUIPER_THRESHOLD:
+                    PvalueError(
+                        'Kuiper test (5%) did not reject MULL hypothesis '
+                        +f'({self.Kuiper_statistic:.3f}<{self._KUIPER_THRESHOLD}), and this is excluded'
+                    )
+
+            except (AttributeError, ValueError) as e:
+                pass
+
+        ## Weighted circular median for all data points
+        self.median = circMedian(self.ar_orient, weights=self.ar_cc**2)
+
+        ## Median Absolute Deviation
+        self.MAD = np.median(np.abs(circdist(self.ar_orient,self.median)))
+
+
+        boot_weight = [
+            np.ones(len(self.ar_orient)),  ## if not perform bootstrap
+            self.ar_cc
+        ][weight_CC]
+
+        ## Selection 2
+        if if_selection:
+
+            ## Extract ϕ in [-K*MAD, K*SMAD]
+            SMAD = K * self.MAD
+            deviation = circdist(self.ar_orient, self.median)
+            self.ar_orient = self.ar_orient[(np.abs(deviation)<=SMAD)]
+
+            self.num_eq = len(self.df_orient)
+            if self.num_eq < self._min_num_eq:
+                self._goodstation = False
+                raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
+
+
+            ## Bootstrap resampling and calculate sample mean
+            datasize = round(len(self.ar_orient)*bootstrap_fraction_in_percent)
+            
+            if weight_CC:
+                self.ar_orient = np.array([
+                    _weight_circmean(
+                        data_all[:,:2][np.random.randint(len(self.ar_orient),size=datasize)]
+                    ) for _ in range(bootstrap_iteration)
+                ])
+
+                self.ar_orient, boot_weight = self.ar_orient.T
+                self.ar_orient %= 360
+
+            else:
+                self.ar_orient = np.array([
+                    np.rad2deg(
+                        circstats.circmean(
+                            np.deg2rad(np.random.choice(self.ar_orient, size=len(self.ar_orient))),
+                        )
+                    ) % 360 for _ in range(bootstrap_iteration)
+                ])
+
+            ## Average, Variance
+            self.circmean, self.circvar = angle_stats(self.ar_orient, weights=boot_weight) 
+
+            ## Median 
+            self.median = circMedian(self.ar_orient, weights=boot_weight)
+            
+            ## 2.5% (p1) 97.5% (p2) percentiles
+            p1, p2 = np.quantile(
+                circdist(self.ar_orient, self.circmean),
+                q=[alpha_CI/2, 1-alpha_CI/2]
+            )
+            self.CI = p2 - p1
+            self.p1, self.p2 = (np.array([p1, p2]) + self.circmean) % 360
+
+            
+            ## Kuiper test to check vonmises dist.
+            # _, self._fpp = kuiper(
+            #     np.deg2rad((self.ar_orient-180)), 
+            #     partial(stats.vonmises.cdf, kappa=self.kappa, loc=np.deg2rad(self.circmean-180))
+            # )
+            # if self._fpp < 0.05:
+            #     PvalueError(f'Kuiper test denied vonmises distribution ({self._fpp:.2e}<0.05), and this is excluded')
+            
+        
+        ## Circular Mean Absolute Deviation
+        self.CMAD = np.inf
+        for _dphi in np.arange(0,360,0.5):
+            # vtmp = np.sum(np.abs(circdist(self.ar_orient, _dphi))*boot_weight)
+            vtmp = np.sum((circdist(self.ar_orient, _dphi))**2*boot_weight)
+            if vtmp < self.CMAD:
+                self.CMAD = vtmp
+                self.arcmean = _dphi
+        for _dphi in self.arcmean+np.arange(-5,5,0.02):
+            _dphi %= 360
+            vtmp = np.sum((circdist(self.ar_orient, _dphi))**2*boot_weight)
+            if vtmp < self.CMAD:
+                self.CMAD = vtmp
+                self.arcmean = _dphi
+        self.CMAD /= np.sum(boot_weight)
+
+        ## Fitting to von Mises distribution - (kappa, mu, scale)
+        self.kappa, self._mean_vonMises, _ = stats.vonmises.fit(
+            np.deg2rad(self.ar_orient-180), 
+            floc=np.deg2rad(self.circmean-180), 
+            fscale=1
+        )
+
+        self.std1 = np.rad2deg(np.sqrt(-2*np.log(1-self.circvar)))
+        # self.CI2_vonMises = np.rad2deg(alpha_CI[1]/np.sqrt((1-self.circvar)*self.kappa))
+        self.CI1_vonMises = np.rad2deg(stats.vonmises.ppf(1.-alpha_CI/2, kappa=self.kappa))
+        self.std2 = np.std(circdist(self.ar_orient, self.arcmean, deg=True))
+        self.std3 = takagi_error(self.ar_orient, boot_weight)
     
     
     

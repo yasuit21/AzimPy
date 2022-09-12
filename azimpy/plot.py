@@ -59,18 +59,57 @@ class OrientAnalysis():
         if_selection=True, 
         df_chtbl=None, 
         min_CC=0.5, 
+        weight_CC=True,
+        bootstrap_iteration:int =5000, 
+        bootstrap_fraction_in_percent:float =100.,
         alpha_CI=0.05, 
-        K=5.0,
+        K=5.0,        
+        kuiper_level=0.05,
         only_good_stations=True,
     ):
-        
+        """Perform circular statistics for orientations.
+        A class for grouping `OrientSingle` objects.
+
+        Parameters:
+        -----------
+        if_selection: bool
+            Whether to perform bootstrap resampling
+        df_chtbl: pd.DataFrame
+            A result dataframe by `OrientOBS`
+        min_CC: float = 0.5
+            Minimum cross-correlation values 
+            to be considered for analysis
+        weight_CC: bool = True
+            Whether to weight CC values
+        K: bool = 5.0
+            Data within `K` times median absolute deviation
+        bootstrap_iteration: int = 5000
+            Iterration numbers for bootstrap resampling
+        bootstrap_fraction_in_percent:float = 100.
+            How much percent of numbers of data is used for 
+            bootstrap resampling.
+        alpha_CI: float = 0.05
+            `(1-alpha_CI)*100`% confidence intervals for
+            orientation uncertainty 
+        kuiper_level:float = 0.05
+            The threshold p value in the Kuiper test.
+        """
         self.stations = []
         self.if_selection = if_selection
         self.df_chtbl = df_chtbl
+
+        self._kw_orientsingle = dict(
+            min_CC=min_CC, 
+            weight_CC=weight_CC, 
+            K=K, 
+            bootstrap_iteration=bootstrap_iteration, 
+            bootstrap_fraction_in_percent=bootstrap_fraction_in_percent,
+            alpha_CI=alpha_CI,
+            kuiper_level=kuiper_level,
+        )
         
         self.min_CC = min_CC
         self.alpha_CI = (alpha_CI, stats.norm.ppf(1-alpha_CI/2))
-        self.K = K
         self.only_good_stations = only_good_stations
         
     def __len__(self):
@@ -83,25 +122,35 @@ class OrientAnalysis():
         )
         return _str
         
-    def add_station(self, df_orient, stationname, **kwargs):
+    def add_station(self, df_orient, stationname):
+        """Perform circular statistics for each station.
+        The object will be appended in the list `.stations`.
+
+        Parameters:
+        -----------
+        df_orient: pd.DataFrame
+            A result dataframe by `OrientOBS`
+        stationname: str
+            A station name for the result dataframe
+        """
         
         try:
             orientsingle = OrientSingle(
                 df_orient, stationname, 
                 self.if_selection, 
-                min_CC=self.min_CC,
-                alpha_CI=self.alpha_CI[0],
-                K=self.K,
-                **kwargs,
+                **self._kw_orientsingle,
             )
-            self.stations.append(orientsingle)
-
         except IndexError:
             pass
         except PvalueError:
             pass
+
+        self.stations.append(orientsingle)
+
         
     def plot(self, polar=True, fig=None):
+        """Plot the estimated results w/ or w/o bootstrap.
+        """
         
         ncols = 3 #if polar else 2
         
@@ -130,7 +179,7 @@ class OrientAnalysis():
         else: 
             axs = fig.subplots(nrows=-(-len(self)//ncols), ncols=ncols)
         
-        xxx = np.linspace(-np.pi, np.pi, 1000)
+        arr_theta_axis = np.linspace(-np.pi, np.pi, 1000)
         label_ij = [0] * 2
         
         colormap_cc = mcolors.ListedColormap(
@@ -213,9 +262,9 @@ class OrientAnalysis():
                     
                     ## von Mises dist.
                     line1, = ax.plot(
-                        xxx+np.pi, 
+                        arr_theta_axis+np.pi, 
                         ax.get_rmax() * np.sqrt(stats.vonmises.pdf(
-                            xxx-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
+                            arr_theta_axis-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
                         )),
                         c='darkgreen', zorder=5,
                     )
@@ -259,9 +308,9 @@ class OrientAnalysis():
                     
                     ## von Mises dist.
                     try:
-                        vonmises_dist = stats.vonmises.pdf(xxx, kappa=orientsingle.kappa)
+                        vonmises_dist = stats.vonmises.pdf(arr_theta_axis, kappa=orientsingle.kappa)
                         line1, = ax.plot(
-                            np.rad2deg(xxx)+circdist(
+                            np.rad2deg(arr_theta_axis)+circdist(
                                 np.rad2deg(orientsingle._mean_vonMises)+180, 
                                 orientsingle.circmean
                             ), 
@@ -281,9 +330,9 @@ class OrientAnalysis():
                     )
                     ## von Mises dist.
                     line1, = ax.plot(
-                        np.rad2deg(xxx)+180, 
+                        np.rad2deg(arr_theta_axis)+180, 
                         ax.get_ylim()[-1] * stats.vonmises.pdf(
-                            xxx-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
+                            arr_theta_axis-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
                         ), 
                         c='darkgreen', zorder=5,
                     )

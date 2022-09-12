@@ -754,8 +754,7 @@ class OrientSingle():
         alpha_CI=0.05,
         kuiper_level=0.05,
     ):
-        """
-        Perform circular statistics for each station.
+        """Perform circular statistics for each station.
 
         Parameters:
         -----------

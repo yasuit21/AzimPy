@@ -1,10 +1,13 @@
 # AzimPy
 Estimate horizontal orientation of ocean-bottom seismograph
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/521535371.svg)](https://zenodo.org/badge/latestdoi/521535371)
 
-[`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source module for estimating the horizontal orientation of ocean-bottom seismographs. 
-This module uses Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
+Copyright (c) 2022 **Yasunori Sawaki**[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391)
+
+[`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source Python package for estimating the horizontal orientation of ocean-bottom seismographs. 
+This package performs the Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
 One of the main classes `OrientOBS` is inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
 This module also provides other classes and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
@@ -191,6 +194,12 @@ for stationName in stationList:
     ```
 
 
+## Note
+- The supported format is only `SAC`, but you may use some other formats.
+- The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. No waveform data in websites and repository are available in this package at this moment.
+- The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
+- `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs `Kuiper test`.
+
 
 ### Use case
 <!-- ### Cite -->
@@ -200,16 +209,14 @@ for stationName in stationList:
 ### References
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012, Determination of New Zealand ocean bottom seismometer orientation via Rayleigh-wave polarization. Seismol. Res. Lett., 83, 704–713. https://doi.org/10.1785/0220110128 
 - Doran, A.K. & Laske, G., 2017, Ocean‐bottom deismometer instrument orientations via automated Rayleigh‐wave arrival‐angle measurements. Bull. Seismol. Soc. Am., 107, 691–708. https://doi.org/10.1785/0120160165 
-- Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. Seismol. Res. Lett., 90, 2175–2187. https://doi.org/10.1785/0220190093 
+- Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. Seismol. Res. Lett., 90, 2175–2187. https://doi.org/10.1785/0220190093
+- [Concept DOI for the latest `AzimPy`: `10.5281/zenodo.6972713`](https://doi.org/10.5281/zenodo.6972713)
     
-    
-## Note
-- The supported format is only `SAC`, but you may use some other formats.
-- The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. No waveform data in websites and repository are available in this package at this moment.
-- The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
-- `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs `Kuiper test`.
+## Acknowledgments
 
-    
+This package makes use of [`ObsPy v1.3.0`](https://github.com/obspy/obspy) for [FDSN web client services](https://www.fdsn.org/webservices/) and processing seismograms.
+
+
 ## License
 
 This project is licensed under the MIT License, see the `LICENSE` for details.

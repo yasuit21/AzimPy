@@ -50,10 +50,10 @@ def read_chtbl(filepath):
     channelTable = pd.read_csv(
         filepath,
         comment='#', delim_whitespace=True, header=None,
-        usecols=[3,4,7,9,10,*range(11,16)], 
+        usecols=[3,4,9,10,*range(13,16)], 
         names=(
-            'station', 'comp', 'sensitivity', 'period', 'damping', 
-            'preamp', 'LSB', 'latitude', 'longitude', 'elevation'
+            'station', 'comp', 'period', 'damping', 
+            'latitude', 'longitude', 'elevation'
         ),
     ).set_index('station')
 

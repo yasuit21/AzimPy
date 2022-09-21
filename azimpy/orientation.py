@@ -45,6 +45,8 @@ import tempfile
 # import argparse
 
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator, PercentFormatter
 import matplotlib.dates as dates
 import pandas as pd
 from scipy import signal, stats
@@ -58,7 +60,12 @@ import obspy.signal
 from obspy.clients.fdsn import Client
 from astropy.stats import circstats
 
-from .params import kuiper_level_dict
+from .params import (
+    kuiper_level_dict, 
+    colormap_cc,
+    kwargs_plot_for_legend,
+    get_cbar_bound_norm,
+)
 from .utils import read_chtbl, read_paz
 from .rstats import (
     circdist, 
@@ -70,12 +77,73 @@ if VALID_RPY2:
     from .rstats import kuiper_test
 
 
-
 ###############################################################################
 ##### Main classes
 
 
 class OrientOBS(Client):
+    """A class to estimate horizontal orientations of 
+    Ocean-Bottom Seismometers, inherited from 
+    `obspy.clients.fdsn.Client`.
+    
+    Attributes:
+    -----------
+    timezone: float = 9
+        Set the timezone of observed data.
+        -> UTC+`timezone` [h]
+        Default to 9, which corresponds to JST.
+    base_url: str = 'IRIS'
+        Institution name with earthquake catalog.
+    See `Client.__init__.__doc__`(https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html)
+    for other arguments.
+    
+    Rayleigh-wave polarization method (e.g., Stachnik+ 2012) 
+    is impremented in this class.
+    
+    [Example]
+    >>> import obspy as ob
+    >>> from azimpy import OrientOBS, read_paz
+    
+    >>> obs = OrientOBS(base_url='USGS', timezone=9)
+    >>> obs.query_events(
+    ... starttime=ob.UTCDateTime('20200401000000'),
+    ... endtime=ob.UTCDateTime('20201001000000'),
+    ... minmagnitude=6.0,
+    ... maxdepth=100,
+    ... orderby='time-asc',
+    )
+    
+    >>> obs.find_stream(
+    ... '/path/to/datadir',
+    ... output_path='/path/to/output/station',
+    ... polezero_fpath='/path/to/polezero/hoge.paz',
+    ... fileformat=f'*.*.%y%m%d%H%M.sac',
+    ... freqmin=1./40, freqmax=1./20,
+    ... max_workers=4,
+    ... vel_surface=4.0,
+    ... time_before_arrival=-20.0,
+    ... time_after_arrival=600.0,
+    ... distmin=5., distmax=120.,
+    )
+
+    Then, the output dataframe will be pickled as `station_020_040.pickle` 
+    under `/path/to/output/station` directory.
+    
+
+    [References]
+    - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012. 
+        Determination of New Zealand ocean bottom seismometer orientation 
+        via Rayleigh-wave polarization. Seismol. Res. Lett., 83, 
+        704–713. https://doi.org/10.1785/0220110128 
+    - Doran, A.K. & Laske, G., 2017. Ocean‐bottom deismometer 
+        instrument orientations via automated Rayleigh‐wave 
+        arrival‐angle measurements. Bull. Seismol. Soc. Am., 107, 
+        691–708. https://doi.org/10.1785/0120160165 
+    - Takagi, R., Uchida, N., Nakayama, T., et al., 2019. 
+        Estimation of the orientations of the S‐net cabled 
+        ocean‐bottom sensors. Seismol. Res. Lett., 90, 
+        2175–2187. https://doi.org/10.1785/0220190093 
+    """
     
     def __init__(
         self, 
@@ -83,64 +151,8 @@ class OrientOBS(Client):
         timezone=9,
         **webclient, 
     ):
-        """A class to estimate horizontal orientations of 
-        Ocean-Bottom Seismometers, inherited from 
-        `obspy.clients.fdsn.Client`.
-        
-        Parameters:
-        -----------
-        timezone: float = 9
-            Set the timezone of observed data.
-            -> UTC+`timezone` [h]
-            Default to 9, which corresponds to JST.
-        base_url: str = 'IRIS'
-            Institution name with earthquake catalog.
-        See `Client.__init__.__doc__`(https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html)
-        for other arguments.
-        
-        Rayleigh-wave polarization method (e.g., Stachnik+ 2012) 
-        is impremented in this class.
-        
-        [Example]
-        >>> import obspy as ob
-        >>> from azimpy import OrientOBS, read_paz
-        
-        >>> obs = OrientOBS(base_url='USGS', timezone=9)
-        >>> obs.query_events(
-        ... starttime=ob.UTCDateTime('20200401000000'),
-        ... endtime=ob.UTCDateTime('20201001000000'),
-        ... minmagnitude=6.0,
-        ... maxdepth=100,
-        ... orderby='time-asc',
-        )
-        
-        >>> obs.find_stream(
-        ... '/path/to/datadir',
-        ... output_path='/path/to/output',
-        ... polezero_fpath='/path/to/polezero/hoge.paz',
-        ... fileformat=f'*.*.%y%m%d%H%M.sac',
-        ... freqmin=1./40, freqmax=1./20,
-        ... max_workers=4,
-        ... vel_surface=4.0,
-        ... time_before_arrival=-20.0,
-        ... time_after_arrival=600.0,
-        ... distmin=5., distmax=120.,
-        )
-
-        [References]
-        - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012. 
-            Determination of New Zealand ocean bottom seismometer orientation 
-            via Rayleigh-wave polarization. Seismol. Res. Lett., 83, 
-            704–713. https://doi.org/10.1785/0220110128 
-        - Doran, A.K. & Laske, G., 2017. Ocean‐bottom deismometer 
-            instrument orientations via automated Rayleigh‐wave 
-            arrival‐angle measurements. Bull. Seismol. Soc. Am., 107, 
-            691–708. https://doi.org/10.1785/0120160165 
-        - Takagi, R., Uchida, N., Nakayama, T., et al., 2019. 
-            Estimation of the orientations of the S‐net cabled 
-            ocean‐bottom sensors. Seismol. Res. Lett., 90, 
-            2175–2187. https://doi.org/10.1785/0220190093 
-
+        """Inits OrientOBS with arguments for 
+        obspy.clients.fdsn.Client.
         """
         
         super().__init__(base_url, **webclient)
@@ -330,7 +342,7 @@ class OrientOBS(Client):
         decimate_kw=dict(factor=10,strict_length=True),
         taper_kw=dict(max_percentage=0.1,type='cosine'),
     ):
-        '''Find stream to pick up earthquakes from event calalog.
+        """Find stream to pick up earthquakes from event calalog.
         This method performs Rayleigh wave polarization analysis for each event.
         
         Note that all of the SAC files must be in `parent_path` directory.
@@ -399,7 +411,14 @@ class OrientOBS(Client):
             A kwarg passed to `Stream.decimate()`.
         taper_kw: dict, dict(max_percentage=0.1,type='cosine')
             A kwarg passed to `Stream.taper()`
-        '''
+
+        Returns:
+        -----------
+        df_output: `pandas.DataFrames`
+            A dataframe of the results. This output dataframe will also be
+            pickled in `output_path` directory as a
+            `{output_path.name}_{min_period}_{max_period}.pickle'
+        """
         
         self.parent_path = parent_path
         output_path.mkdir(exist_ok=True, parents=True)
@@ -427,7 +446,7 @@ class OrientOBS(Client):
         output = np.zeros([len(self.events), 5]) * np.nan
         
         ## output for stream
-        stdir = output_path/'stream'/f'{int(1./freqmax):03d}_{int(1./freqmin):03d}'
+        stdir = output_path/'stream'/f'{round(1./freqmax):03d}_{round(1./freqmin):03d}'
         stdir.mkdir(exist_ok=True, parents=True)
         
         
@@ -741,6 +760,72 @@ class OrientOBS(Client):
     
     
 class OrientSingle():
+    """Perform circular statistics for each station.
+
+    Attributes:
+    -----------
+    df_orient: pd.DataFrame
+        A result dataframe by `OrientOBS`
+    stationname: str
+        A station name for the result dataframe
+    if_selection: bool
+        Whether to perform bootstrap resampling
+    min_CC: float = 0.5
+        Minimum cross-correlation values 
+        to be considered for analysis
+    weight_CC: bool = True
+        Whether to weight CC values
+    K: bool = 5.0
+        Data within `K` times median absolute deviation
+    bootstrap_iteration: int = 5000
+        Iterration numbers for bootstrap resampling
+    bootstrap_fraction_in_percent:float = 100.
+        How much percent of numbers of data is used for 
+        bootstrap resampling.
+    alpha_CI: float = 0.05
+        `(1-alpha_CI)*100`% confidence intervals for
+        orientation uncertainty 
+    kuiper_level:float = 0.05
+        The threshold p value in the Kuiper test.
+
+    [Example]
+    The example uses a single station `stationA1`.
+
+    >>> import pandas as pd
+    >>> from azimpy import OrientSingle, read_chtbl
+
+    ## The output dataframe of orientations
+    >>> df_orient = pd.read_pickle(
+    ... '/path/to/output/stationA1/stationA1_020_040.pickle')
+
+    ## Init OrientSingle for circular statistics
+    >>> orientsingle_raw = OrientSingle(
+    ... df_orient, 'stationA1', 
+    ... if_selection=False,  # w/o bootstrap analysis
+    ... min_CC=0.5, weight_CC=True)
+    >>> orientsingle_boot = OrientSingle(
+    ... df_orient, 'stationA1', 
+    ... if_selection=True,  # perform bootstrap analysis
+    ... min_CC=0.5, weight_CC=True, K=5.0,
+    ... bootstrap_iteration=5000, alpha_CI=0.05)
+
+    ## Init a figure with subfigures
+    >>> fig = plt.figure(figsize=[8,4])
+    >>> subfigs = fig.subfigures(nrows=1, ncols=2).flatten()
+
+    ## Plot for `orientsingle_raw`
+    >>> orientsingle_raw.plot(
+    ... polar=True, 
+    ... fig=subfigs[0], in_parentheses='BB',
+    ... add_cbar=True)
+    >>> subfigs[0].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+
+    ## Plot for `orientsingle_boot`
+    >>> orientsingle_boot.plot(
+    ... fig=subfigs[1], in_parentheses='BB')
+    >>> subfigs[1].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+    """
+
     def __init__(
         self, 
         df_orient:pd.DataFrame, 
@@ -753,35 +838,9 @@ class OrientSingle():
         bootstrap_fraction_in_percent:float =100.,
         alpha_CI=0.05,
         kuiper_level=0.05,
+        in_parentheses=None
     ):
-        """Perform circular statistics for each station.
-
-        Parameters:
-        -----------
-        df_orient: pd.DataFrame
-            A result dataframe by `OrientOBS`
-        stationname: str
-            A station name for the result dataframe
-        if_selection: bool
-            Whether to perform bootstrap resampling
-        min_CC: float = 0.5
-            Minimum cross-correlation values 
-            to be considered for analysis
-        weight_CC: bool = True
-            Whether to weight CC values
-        K: bool = 5.0
-            Data within `K` times median absolute deviation
-        bootstrap_iteration: int = 5000
-            Iterration numbers for bootstrap resampling
-        bootstrap_fraction_in_percent:float = 100.
-            How much percent of numbers of data is used for 
-            bootstrap resampling.
-        alpha_CI: float = 0.05
-            `(1-alpha_CI)*100`% confidence intervals for
-            orientation uncertainty 
-        kuiper_level:float = 0.05
-            The threshold p value in the Kuiper test.
-        """
+        """Inits OrientSingle"""
 
         ## Internal params
         self._min_num_eq = 6
@@ -789,6 +848,9 @@ class OrientSingle():
         
         ## Init params
         self.name = stationname
+        self.if_selection = if_selection
+        self.min_CC = min_CC
+        self.alpha_CI = alpha_CI
         self.circmean = np.nan
         self.median = np.nan
         self.MAD = np.nan
@@ -804,14 +866,16 @@ class OrientSingle():
         self.std3 = np.nan
         self.CMAD = np.nan
         self._KUIPER_THRESHOLD = kuiper_level_dict[kuiper_level]  #(15%,10%,5%,2.5%,1%)
+        self.in_parentheses = in_parentheses
 
-        if if_selection:
+        if self.if_selection:
             if (10. <= bootstrap_fraction_in_percent <= 100.):
                 bootstrap_fraction_in_percent *= 0.01
             else:
                 raise ValueError('`bootstrap_fraction_in_percent` must be in 10%')
 
-            df_orient = df_orient.query(f"CC>={min_CC}")
+            self.bootstrap_iteration = bootstrap_iteration
+            df_orient = df_orient.query(f"CC>={self.min_CC}")
 
         self.num_eq = len(df_orient)
 
@@ -821,17 +885,14 @@ class OrientSingle():
         self.df_orient = df_orient
         
         
-        try:  ## _OrientSingleError
+        try:  ## _selfError
             self._perform_circular(
-                if_selection,
                 weight_CC, 
                 K, 
-                bootstrap_iteration, 
                 bootstrap_fraction_in_percent,
-                alpha_CI,
                 kuiper_level,
             )
-        except _OrientSingleError:
+        except _selfError:
             pass
         
     def __str__(self):
@@ -840,12 +901,9 @@ class OrientSingle():
 
     def _perform_circular(
         self,
-        if_selection,
         weight_CC, 
         K, 
-        bootstrap_iteration, 
         bootstrap_fraction_in_percent,
-        alpha_CI,
         kuiper_level,
     ):
         """Internal method to perform circular statistics.
@@ -854,7 +912,7 @@ class OrientSingle():
         ## Selection 1
         if self.num_eq < self._min_num_eq:
             self._goodstation = False
-            raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
+            raise _selfError(f'Number of EQs smaller than {self._min_num_eq}')
 
         data_all = self.df_orient[['orientation','CC','CC*']].values
         data_all = data_all[~np.isnan(data_all[:,0])]
@@ -871,7 +929,7 @@ class OrientSingle():
         self.circmean, self.circvar = angle_stats(self.ar_orient, weights=self.ar_cc**2)
         
         ## Kuiper test 
-        if VALID_RPY2 and (not if_selection):
+        if VALID_RPY2 and (not self.if_selection):
             self.Kuiper_statistic = np.nan
             
             try:
@@ -900,7 +958,7 @@ class OrientSingle():
         ][weight_CC]
 
         ## Selection 2
-        if if_selection:
+        if self.if_selection:
 
             ## Extract ϕ in [-K*MAD, K*SMAD]
             SMAD = K * self.MAD
@@ -910,7 +968,7 @@ class OrientSingle():
             self.num_eq = len(self.df_orient)
             if self.num_eq < self._min_num_eq:
                 self._goodstation = False
-                raise _OrientSingleError(f'Number of EQs smaller than {self._min_num_eq}')
+                raise _selfError(f'Number of EQs smaller than {self._min_num_eq}')
 
 
             ## Bootstrap resampling and calculate sample mean
@@ -920,7 +978,7 @@ class OrientSingle():
                 self.ar_orient = np.array([
                     _weight_circmean(
                         data_all[:,:2][np.random.randint(len(self.ar_orient),size=datasize)]
-                    ) for _ in range(bootstrap_iteration)
+                    ) for _ in range(self.bootstrap_iteration)
                 ])
 
                 self.ar_orient, boot_weight = self.ar_orient.T
@@ -932,7 +990,7 @@ class OrientSingle():
                         circstats.circmean(
                             np.deg2rad(np.random.choice(self.ar_orient, size=len(self.ar_orient))),
                         )
-                    ) % 360 for _ in range(bootstrap_iteration)
+                    ) % 360 for _ in range(self.bootstrap_iteration)
                 ])
 
             ## Average, Variance
@@ -944,7 +1002,7 @@ class OrientSingle():
             ## 2.5% (p1) 97.5% (p2) percentiles
             p1, p2 = np.quantile(
                 circdist(self.ar_orient, self.circmean),
-                q=[alpha_CI/2, 1-alpha_CI/2]
+                q=[self.alpha_CI/2, 1-self.alpha_CI/2]
             )
             self.CI = p2 - p1
             self.p1, self.p2 = (np.array([p1, p2]) + self.circmean) % 360
@@ -984,12 +1042,316 @@ class OrientSingle():
 
         self.std1 = np.rad2deg(np.sqrt(-2*np.log(1-self.circvar)))
         # self.CI2_vonMises = np.rad2deg(alpha_CI[1]/np.sqrt((1-self.circvar)*self.kappa))
-        self.CI1_vonMises = np.rad2deg(stats.vonmises.ppf(1.-alpha_CI/2, kappa=self.kappa))
+        self.CI1_vonMises = np.rad2deg(stats.vonmises.ppf(1.-self.alpha_CI/2, kappa=self.kappa))
         self.std2 = np.std(circdist(self.ar_orient, self.arcmean, deg=True))
         self.std3 = takagi_error(self.ar_orient, boot_weight)
     
-    
-    
+    def plot(
+        self, polar=True, fig=None,
+        in_parentheses=None,
+        add_cbar=False, ax_colorbar=None,
+    ):
+        """Plot the estimated results for this station 
+        w/ or w/o bootstrap.
+        Note that `plt.show()` may be required when viewing the outputs.
+
+        Parameters:
+        -----------
+        polar: bool, defaults to True
+            Whether to make a polar plot.
+            If `if_selection` == False, `polar` is set to False.
+        fig: `matplotlib.figure.Figure` or `matplotlib.figure.SubFigure`, None
+            A figure on which the results are drawn.
+            If None, a new figure will be created.
+        in_parentheses: str, None
+            Some texts in parentheses with the station name.
+        add_cbar: bool, False
+            If True, a colorbar for CC values are drawn.
+        ax_colorbar: `matplotlib.axes.Axes`, None
+            Axes for plotting a colorbar when add_cbar == True.
+            If None, a new axes will be created.
+
+        Returns:
+        -----------
+        `matplotlib.figure.Figure` or `matplotlib.figure.SubFigure`
+            A figure object with the results from a single station.
+        
+        [Example]
+        The example uses a single station `stationA1`.
+
+        >>> import pandas as pd
+        >>> from azimpy import OrientSingle, read_chtbl
+
+        ## The output dataframe of orientations
+        >>> df_orient = pd.read_pickle(
+        ... '/path/to/output/stationA1/stationA1_020_040.pickle')
+
+        ## Init OrientSingle for circular statistics
+        >>> orientsingle_raw = OrientSingle(
+        ... df_orient, 'stationA1', 
+        ... if_selection=False,  # w/o bootstrap analysis
+        ... min_CC=0.5, weight_CC=True)
+        >>> orientsingle_boot = OrientSingle(
+        ... df_orient, 'stationA1', 
+        ... if_selection=True,  # perform bootstrap analysis
+        ... min_CC=0.5, weight_CC=True, K=5.0,
+        ... bootstrap_iteration=5000, alpha_CI=0.05)
+
+        ## Init a figure with subfigures
+        >>> fig = plt.figure(figsize=[8,4])
+        >>> subfigs = fig.subfigures(nrows=1, ncols=2).flatten()
+
+        ## Plot for `orientsingle_raw`
+        >>> orientsingle_raw.plot(
+        ... polar=True, 
+        ... fig=subfigs[0], in_parentheses='BB',
+        ... add_cbar=True)
+        >>> subfigs[0].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+
+        ## Plot for `orientsingle_boot`
+        >>> orientsingle_boot.plot(
+        ... fig=subfigs[1], in_parentheses='BB')
+        >>> subfigs[1].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+        """
+
+        if self.if_selection:
+            polar = False
+
+        if in_parentheses is None:
+            in_parentheses = self.in_parentheses
+
+        if fig is None:
+            fig = plt.figure(
+                figsize=[
+                    np.array([3,2]),
+                    np.array([3,3.2]),
+                ][polar]
+            )
+
+        if self.if_selection:
+            theta_range = (-10, 10)
+            bin_interval = 0.5
+            rorigin = -0.3
+        else:
+            theta_range = (0, 360)
+            bin_interval = 5
+            rorigin = 0.
+
+        arr_theta_axis = np.linspace(-np.pi, np.pi, 1000)
+        bound_cc, norm_cc = get_cbar_bound_norm(min_CC=self.min_CC)
+
+        #######################################################################
+        ##### Main part for plot
+
+        ax = fig.subplots(subplot_kw=dict(polar=polar))
+
+        ax.set_title(
+            f'{self.name}'+[f' ({in_parentheses})',''][int(in_parentheses is None)], 
+            # fontdict={'fontsize':13}
+        )
+        ax.set(
+            xlabel=[
+                "$H_1$ azimuth [$\degree$]",
+                "Azimuthal deviation from circular mean [$\degree$]"
+            ][self.if_selection]
+        )
+
+        ## Different types of plot
+        if polar:
+            ## Polar plot
+            _counts, _bins = np.histogram(
+                np.deg2rad(self.ar_orient-self.if_selection*self.circmean),
+                bins=np.deg2rad(np.arange(theta_range[0], theta_range[1]+0.01, bin_interval)),
+            )
+            
+            freqmax = np.max(_counts)/bin_interval/np.sum(_counts)*100
+            rticks = np.arange(1,np.ceil(freqmax)+0.1) * 0.01
+                
+            ax.set(
+                theta_zero_location="N", theta_direction=-1, 
+                xticks=np.deg2rad([
+                    np.arange(0,360,30),
+                    np.arange(theta_range[0],theta_range[1]+1, 5)
+                ][self.if_selection]),
+                rorigin=rorigin,
+                ylim=(0,np.sqrt((freqmax+1.5)*0.01)),
+                yticks=np.sqrt(rticks), 
+                yticklabels=[f'{rtk*100:.0f}%' for rtk in rticks],
+                thetamin=theta_range[0], thetamax=theta_range[1]
+            )
+            ax.tick_params('x', labelsize='small')
+            ax.tick_params('y', labelsize='x-small')
+            ax.xaxis.set_minor_locator(AutoMinorLocator())
+
+            ax.bar(
+                _bins[:-1], height=np.sqrt(_counts/np.sum(_counts)/bin_interval), 
+                width=np.deg2rad(bin_interval), alpha=0.8,
+            )
+            
+            if not self.if_selection:
+                line_mean = ax.axvline(
+                    x=np.deg2rad(self.circmean), 
+                    zorder=5, **kwargs_plot_for_legend["mean"]
+                )
+                
+                # ## von Mises dist.
+                # line1, = ax.plot(
+                #     arr_theta_axis+np.pi, 
+                #     ax.get_rmax() * np.sqrt(stats.vonmises.pdf(
+                #         arr_theta_axis-np.deg2rad(self.circmean-180), kappa=self.kappa
+                #     )),
+                #     c='darkgreen', zorder=5,
+                # )
+                
+            line_median = ax.axvline(
+                x=np.deg2rad(self.median-self.if_selection*self.circmean), 
+                # label='Circular median $\mu_m$', c='b', linewidth=2.0, linestyle='dotted', 
+                zorder=5,
+                **kwargs_plot_for_legend["median"]
+            )
+                    
+        else:
+            ## Standard plot
+
+            ax.yaxis.get_major_locator().set_params(integer=True)
+            # if j == 2:
+            #     ax.tick_params(labelright=True, labelleft=False)
+            
+            _counts, bins, _ = ax.hist(
+                [self.ar_orient, circdist(self.ar_orient, self.circmean)][self.if_selection],
+#                     self.ar_orient-self.if_selection*self.circmean, 
+                range=theta_range, 
+                bins=round(np.sum(np.abs(theta_range))//bin_interval), 
+                density=self.if_selection, alpha=0.8,
+            )
+            
+            
+            ax.set(
+                xlim=theta_range, 
+                xticks=[
+                    np.arange(0,361,90),
+                    np.arange(theta_range[0],theta_range[1]+1, 5)
+                ][self.if_selection],
+                ylabel=['Counts',None][self.if_selection]
+                # ylim=(0,)
+            )  
+            
+            # ax.tick_params(labelsize=11)
+            
+            if self.if_selection: 
+                ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+                ax.yaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
+                
+                ## von Mises dist.
+                try:
+                    vonmises_dist = stats.vonmises.pdf(arr_theta_axis, kappa=self.kappa)
+                    line1, = ax.plot(
+                        np.rad2deg(arr_theta_axis)+circdist(
+                            np.rad2deg(self._mean_vonMises)+180, 
+                            self.circmean
+                        ), 
+                        ax.get_ylim()[-1]*vonmises_dist/vonmises_dist.max(),
+                        zorder=5, **kwargs_plot_for_legend["vonmises"]
+                    )
+                except AttributeError:
+                    pass
+
+                ax.set(
+                    ylim=(0,np.max([0.1,ax.get_ylim()[-1]])),
+                )
+            else:
+                ax.xaxis.set_minor_locator(AutoMinorLocator(6))
+                
+                line_mean = ax.axvline(
+                    x=self.circmean, 
+                    zorder=5, **kwargs_plot_for_legend["mean"]
+                )
+            #     ## von Mises dist.
+            #     line1, = ax.plot(
+            #         np.rad2deg(arr_theta_axis)+180, 
+            #         ax.get_ylim()[-1] * stats.vonmises.pdf(
+            #             arr_theta_axis-np.deg2rad(self.circmean-180), kappa=self.kappa
+            #         ), 
+            #         c='darkgreen', zorder=5,
+            #     )
+                
+            line_median = ax.axvline(
+                x=self.median-self.if_selection*self.circmean, 
+                zorder=5, **kwargs_plot_for_legend["median"]
+            )
+
+        ## Texts for `ax`
+        ax.text(
+            *[(0.15,1.06),(0.15,1.08)][polar], 
+            f"$\mu$: {self.circmean:5.1f}$\degree$\n"+
+            f"$\mu_m$: {self.median:5.1f}$\degree$", 
+            fontsize='x-small', va='bottom', ha='right', transform=ax.transAxes,
+        )        
+        
+        ## Different plot or texts dependeing on `if_selection`
+        if self.if_selection:
+            ax.text(
+                1.20, 1.06, 
+                f"{round((1-self.alpha_CI)*100)}%CI: {self.CI1_vonMises:4.1f}$\degree$\n"+
+                f"$\kappa$: {self.kappa:.2E} ", 
+                fontsize='x-small', va='bottom', ha='right', transform=ax.transAxes,
+            )
+        else:
+            ## Scatter: (azimuth, CC)
+            if polar:
+                
+                ## modified due to upgrade of matplotlib ver. 3.3
+#                     _mappable = ax.scatter(
+#                         np.deg2rad(self.ar_orient), 
+#                         self.ar_cc*ax.get_rmax(), 
+#                         s=100, c=self.ar_cc, alpha=0.8,
+#                         marker='.', linewidth=0.6, 
+#                         edgecolor='face', facecolor='none', 
+#                         norm=norm_cc, cmap=colormap_cc, zorder=4., 
+#                     )
+                _mappable = ax.scatter(
+                    np.deg2rad(self.ar_orient), 
+                    self.ar_cc*ax.get_rmax(), 
+                    s=30, alpha=0.8,
+                    marker='o', linewidth=0.6, 
+                    edgecolor=colormap_cc(norm_cc(self.ar_cc)), 
+                    facecolor='none', 
+                    zorder=4., 
+                )
+            else:
+                _mappable = ax.scatter(
+                    self.ar_orient, 
+                    self.ar_cc*ax.get_ylim()[1], 
+                    s=100, c=self.ar_cc, alpha=0.8,
+                    marker='.', linewidth=0.6, 
+                    edgecolor='face', facecolor='none', 
+                    norm=norm_cc, cmap=colormap_cc, zorder=4., 
+                )
+            _mappable.set_facecolor('none')
+            
+            ax.text(
+                *[(1.06,1.06),(1.15,1.08)][polar],
+                f"MAD:{self.MAD:5.1f}$\degree$",
+                fontsize='x-small', va='bottom', ha='right', transform=ax.transAxes,
+            )
+
+        if add_cbar and (not self.if_selection) and polar:
+            if ax_colorbar is None:
+                ax_colorbar = fig.add_axes([0.0, 1.0, 0.3, 0.03])
+            
+            fig.colorbar(
+                plt.cm.ScalarMappable(cmap=colormap_cc, norm=norm_cc),
+                cax=ax_colorbar, ticks=bound_cc, pad=0.01,
+                spacing='proportional', orientation='horizontal',
+            )
+            ax_colorbar.set_title('${C}_{\~{Z}R}$',fontsize='small')
+            ax_colorbar.tick_params(
+                which='both', direction='in', labelsize='x-small', 
+                top=True, bottom=False, labeltop=True, labelbottom=False
+            )
+
+        return fig
+
     
 ###############################################################################
 
@@ -1001,7 +1363,7 @@ class BadEpicDist(Exception):
 class BadStreamError(Exception):
     pass
 
-class _OrientSingleError(Exception):
+class _selfError(Exception):
     pass
 
 class PvalueError(Exception):

@@ -28,32 +28,98 @@ SOFTWARE.
 ------------------------------------------------------------------------------
 """
 
-import sys
-import os
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from functools import reduce, partial
+from functools import partial
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.style as mplstyle
-from matplotlib.ticker import AutoMinorLocator, PercentFormatter
-# import matplotlib.path as path
-# import matplotlib.patches as patches
-import matplotlib.colors as mcolors
 import pandas as pd
 from scipy import signal, stats
 
 from .orientation import OrientSingle, PvalueError
 from .rstats import circdist
-from .params import set_rcparams
-
-
-## update rcParams
-set_rcparams()
+from .params import (
+    colormap_cc,
+    kwargs_plot_for_legend,
+    dict_OBStypes,
+    get_cbar_bound_norm,
+)
 
 
 class OrientAnalysis():
+    """Perform circular statistics for orientations.
+    A class for grouping `OrientSingle` objects.
+
+    Attributes:
+    -----------
+    if_selection: bool
+        Whether to perform bootstrap resampling
+    df_chtbl: pd.DataFrame
+        A result dataframe by `OrientOBS`
+    min_CC: float = 0.5
+        Minimum cross-correlation values 
+        to be considered for analysis
+    weight_CC: bool = True
+        Whether to weight CC values
+    K: bool = 5.0
+        Data within `K` times median absolute deviation
+    bootstrap_iteration: int = 5000
+        Iterration numbers for bootstrap resampling
+    bootstrap_fraction_in_percent:float = 100.
+        How much percent of numbers of data is used for 
+        bootstrap resampling.
+    alpha_CI: float = 0.05
+        `(1-alpha_CI)*100`% confidence intervals for
+        orientation uncertainty 
+    kuiper_level:float = 0.05
+        The threshold p value in the Kuiper test.
+
+    [Example]
+    The example uses multiple stations whose names are `stationAX`.
+
+    >>> import pandas as pd
+    >>> from azimpy import OrientAnalysis, read_chtbl
+
+    ## Init params
+    >>> min_CC = 0.5
+    >>> alpha_CI = 0.05  ## 100(1-a)% CI
+    >>> bootstrap_iteration = 5000
+
+    >>> stationList = ['stationA1','stationA2','stationA3','stationA4']
+
+    ## Channeltable including above stations' info
+    >>> df_chtbl = read_chtbl('/path/to/channeltable.txt')
+    >>> df_chtbl = df_chtbl.query('comp.str.endswith("U")')
+
+    ## Init OrientAnalysis for circular statistics
+    >>> oa_raw = OrientAnalysis(
+    ... if_selection=False,  # w/o bootstrap analysis
+    ... df_chtbl=df_chtbl, min_CC=min_CC)
+    >>> oa_boot = OrientAnalysis(
+    ... if_selection=True,  # perform bootstrap analysis
+    ... df_chtbl=df_chtbl, 
+    ... min_CC=min_CC, alpha_CI=alpha_CI, 
+    ... bootstrap_iteration=bootstrap_iteration)
+
+    >>> for stationName in stationList:
+    ...     period = df_chtbl.at[stationName,'period']
+    ...     df_orient = pd.read_pickle(
+    ...         f'/path/to/output/{stationName}/{stationName}_020_040.pickle')
+    ...     ## Add the dataframe in `oa_raw`
+    ...     ## This is actually passed to `OrientSingle`
+    ...     oa_raw.add_station(
+    ...         df_orient, stationName, 
+    ...         period=period)
+    ...     ## Add the dataframe in `oa_boot`
+    ...     oa_boot.add_station(
+    ...         df_orient, stationName, 
+    ...         period=period)
+    
+    >>> ## Make a plot
+    >>> fig1 = oa_raw.plot()
+    >>> fig2 = oa_boot.plot()
+    """
+
     def __init__(
         self, 
         if_selection=True, 
@@ -66,34 +132,9 @@ class OrientAnalysis():
         K=5.0,        
         kuiper_level=0.05,
         only_good_stations=True,
+        dict_OBStypes=dict_OBStypes,
     ):
-        """Perform circular statistics for orientations.
-        A class for grouping `OrientSingle` objects.
-
-        Parameters:
-        -----------
-        if_selection: bool
-            Whether to perform bootstrap resampling
-        df_chtbl: pd.DataFrame
-            A result dataframe by `OrientOBS`
-        min_CC: float = 0.5
-            Minimum cross-correlation values 
-            to be considered for analysis
-        weight_CC: bool = True
-            Whether to weight CC values
-        K: bool = 5.0
-            Data within `K` times median absolute deviation
-        bootstrap_iteration: int = 5000
-            Iterration numbers for bootstrap resampling
-        bootstrap_fraction_in_percent:float = 100.
-            How much percent of numbers of data is used for 
-            bootstrap resampling.
-        alpha_CI: float = 0.05
-            `(1-alpha_CI)*100`% confidence intervals for
-            orientation uncertainty 
-        kuiper_level:float = 0.05
-            The threshold p value in the Kuiper test.
-        """
+        """Inits OrientAnalysis"""
         self.stations = []
         self.if_selection = if_selection
         self.df_chtbl = df_chtbl
@@ -111,9 +152,14 @@ class OrientAnalysis():
         self.min_CC = min_CC
         self.alpha_CI = (alpha_CI, stats.norm.ppf(1-alpha_CI/2))
         self.only_good_stations = only_good_stations
+        self.dict_OBStypes = dict_OBStypes
         
     def __len__(self):
-        return len([sta for sta in self.stations if (not self.only_good_stations) or sta._goodstation])
+        _number_of_good_stations = len([
+            sta for sta in self.stations 
+            if (not self.only_good_stations) or sta._goodstation
+        ])
+        return _number_of_good_stations
     
     def __repr__(self):
         _str = (
@@ -122,7 +168,7 @@ class OrientAnalysis():
         )
         return _str
         
-    def add_station(self, df_orient, stationname):
+    def add_station(self, df_orient, stationname, period=None):
         """Perform circular statistics for each station.
         The object will be appended in the list `.stations`.
 
@@ -133,11 +179,14 @@ class OrientAnalysis():
         stationname: str
             A station name for the result dataframe
         """
+
+        in_parentheses = self.dict_OBStypes.get(period)
         
         try:
             orientsingle = OrientSingle(
                 df_orient, stationname, 
                 self.if_selection, 
+                in_parentheses=in_parentheses,
                 **self._kw_orientsingle,
             )
         except IndexError:
@@ -150,46 +199,51 @@ class OrientAnalysis():
         
     def plot(self, polar=True, fig=None):
         """Plot the estimated results w/ or w/o bootstrap.
+        Note that `plt.show()` may be required when viewing the outputs.
+
+        Parameters:
+        -----------
+        polar: bool, defaults to True
+            Whether to make a polar plot.
+            If `if_selection` == False, `polar` is set to False.
+        fig: `matplotlib.figure.Figure` or `matplotlib.figure.SubFigure`, None
+            A figure on which the results are drawn.
+            If None, a new figure will be created.
+
+        Returns:
+        -----------
+        `matplotlib.figure.Figure` or `matplotlib.figure.SubFigure`
+            A figure object with the results from multiple stations.
         """
         
         ncols = 3 #if polar else 2
+        nrows = -(-len(self)//ncols)
         
         if self.if_selection:
             polar = False
         
         if not fig:
+            unit_figsize = [
+                np.array([3,2]),
+                np.array([3,3.2]),
+            ][polar]
             fig = plt.figure(
-                figsize=np.array([ncols,-(-len(self)//ncols)])*[
-                    np.array([3,2]),
-                    np.array([3,3.2]),
-                ][polar]
+                figsize=np.array([ncols,nrows])*unit_figsize
             )
     
-        if self.if_selection:
-            theta_range = (-10, 10)
-            bin_interval = 0.5
-            rorigin = -0.3
-        else:
-            theta_range = (0, 360)
-            bin_interval = 5
-            rorigin = 0.
+        subfigs = fig.subfigures(nrows=nrows, ncols=ncols)
         
-        if polar:
-            axs = fig.subplots(nrows=-(-len(self)//ncols), ncols=ncols, subplot_kw=dict(projection='polar'))
-        else: 
-            axs = fig.subplots(nrows=-(-len(self)//ncols), ncols=ncols)
-        
-        arr_theta_axis = np.linspace(-np.pi, np.pi, 1000)
+        # arr_theta_axis = np.linspace(-np.pi, np.pi, 1000)
         label_ij = [0] * 2
         
-        colormap_cc = mcolors.ListedColormap(
-            ("gray","lightsalmon","darkorange","red"), N=256
-        )
-        bound_cc = np.array([self.min_CC,0.7,0.9, 1.0])
-        norm_cc = mcolors.BoundaryNorm(bound_cc, ncolors=256, extend='min')
+        bound_cc, norm_cc = get_cbar_bound_norm(min_CC=self.min_CC)
         
-        ## Plot for each axes           
-        for ij, ax in np.ndenumerate(axs):
+        list_of_orientsingle = [
+            sta for sta in self.stations 
+            if (not self.only_good_stations) or sta._goodstation
+        ]
+        ## Plot for each subfigure           
+        for ij, subfig in np.ndenumerate(subfigs):
             
             try:
                 i, j = ij
@@ -199,254 +253,80 @@ class OrientAnalysis():
                 k = j
                 
             try:
-                orientsingle = [sta for sta in self.stations if (not self.only_good_stations) or sta._goodstation][k]
+                orientsingle = list_of_orientsingle[k]
             except IndexError:
-                ax.axis('off')
+                # ax.axis('off')
                 continue
                 
-            _period = self.df_chtbl.at[orientsingle.name,'period']
-            if _period == 360:
-                obs_type = 'BB'
-            elif _period == 20:
-                obs_type = '20s'
-            elif _period == 120:
-                obs_type = '120s'
-            else:
-                obs_type = '1s' 
-                
-            ax.set_title(f'{orientsingle.name} ({obs_type})', fontdict={'fontsize':13})
-            
-            if polar:
-
-                _counts, _bins = np.histogram(
-                    np.deg2rad(orientsingle.ar_orient-self.if_selection*orientsingle.circmean),
-                    bins=np.deg2rad(np.arange(theta_range[0], theta_range[1]+0.01, bin_interval)),
-                )
-                
-                freqmax = -(-np.max(_counts)/np.sum(_counts)//0.01)
-                
-                if self.if_selection:
-                    rticks = np.arange(1,freqmax,freqmax//3) * 0.01
-                else:
-                    rticks = np.hstack([
-                        np.arange(1,4,1),
-                        np.arange(5,freqmax+6,5)
-                    ]) * 0.01
-                    
-                ax.set(
-                    theta_zero_location="N", theta_direction=-1, 
-                    xticks=np.deg2rad([
-                        np.arange(0,360,30),
-                        np.arange(theta_range[0],theta_range[1]+1, 5)
-                    ][self.if_selection]),
-                    rorigin=rorigin,
-                    ylim=(0,np.sqrt((freqmax+6)*0.01)),
-                    yticks=np.sqrt(rticks), yticklabels=[f'{rtk*100:.0f}%' for rtk in rticks],
-                    thetamin=theta_range[0], thetamax=theta_range[1]
-                )
-                ax.tick_params('x', labelsize=11)
-                ax.tick_params('y', labelsize=9)
-                ax.xaxis.set_minor_locator(AutoMinorLocator())
-
-                ax.bar(
-                    _bins[:-1], height=np.sqrt(_counts/np.sum(_counts)), 
-                    width=np.deg2rad(bin_interval), alpha=0.8,
-                )
-                
-                if not self.if_selection:
-                    line_mean = ax.axvline(
-                        x=np.deg2rad(orientsingle.circmean), 
-                        c='darkgreen', linewidth=1.5, linestyle='dashed',
-                        zorder=5,
-                    )
-                    
-                    ## von Mises dist.
-                    line1, = ax.plot(
-                        arr_theta_axis+np.pi, 
-                        ax.get_rmax() * np.sqrt(stats.vonmises.pdf(
-                            arr_theta_axis-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
-                        )),
-                        c='darkgreen', zorder=5,
-                    )
-                    
-                line_median = ax.axvline(
-                    x=np.deg2rad(orientsingle.median-self.if_selection*orientsingle.circmean), 
-                    label='Median', c='b', linewidth=2.0, linestyle='dotted', zorder=5,
-                )
-                
-                               
-            else:
-                
-                ax.yaxis.get_major_locator().set_params(integer=True)
-                if j == 2:
-                    ax.tick_params(labelright=True, labelleft=False)
-                
-                _counts, bins, _ = ax.hist(
-                    [orientsingle.ar_orient, circdist(orientsingle.ar_orient, orientsingle.circmean)][self.if_selection],
-#                     orientsingle.ar_orient-self.if_selection*orientsingle.circmean, 
-                    range=theta_range, bins=int(sum(np.abs(theta_range))//bin_interval), 
-                    density=self.if_selection,  alpha=0.8,
-                )
-                
-                freqmax = -(-np.max(_counts)/np.sum(_counts)//0.01)
-                
-                ax.set(
-                    xlim=theta_range, 
-                    xticks=[
-                        np.arange(0,361,90),
-                        np.arange(theta_range[0],theta_range[1]+1, 5)
-                    ][self.if_selection],
-                    #ylim=(0,)
-                )  
-                
-                ax.tick_params(labelsize=11)
-                ax.yaxis.set_major_formatter(PercentFormatter(1, decimals=False))
-                
-                if self.if_selection:
-                    
-                    ax.xaxis.set_minor_locator(AutoMinorLocator(6))
-                    
-                    ## von Mises dist.
-                    try:
-                        vonmises_dist = stats.vonmises.pdf(arr_theta_axis, kappa=orientsingle.kappa)
-                        line1, = ax.plot(
-                            np.rad2deg(arr_theta_axis)+circdist(
-                                np.rad2deg(orientsingle._mean_vonMises)+180, 
-                                orientsingle.circmean
-                            ), 
-                            ax.get_ylim()[-1] * vonmises_dist / vonmises_dist.max(), 
-                            c='darkgreen', zorder=5,
-                        )
-                    except AttributeError:
-                        pass
-                else:
-                    
-                    ax.xaxis.set_minor_locator(AutoMinorLocator(6))
-                    
-                    line_mean = ax.axvline(
-                        x=orientsingle.circmean, 
-                        c='darkgreen', linewidth=1.5, linestyle='dashed',
-                        zorder=5,
-                    )
-                    ## von Mises dist.
-                    line1, = ax.plot(
-                        np.rad2deg(arr_theta_axis)+180, 
-                        ax.get_ylim()[-1] * stats.vonmises.pdf(
-                            arr_theta_axis-np.deg2rad(orientsingle.circmean-180), kappa=orientsingle.kappa
-                        ), 
-                        c='darkgreen', zorder=5,
-                    )
-                    
-                line_median = ax.axvline(
-                    x=orientsingle.median-self.if_selection*orientsingle.circmean, 
-                    label='Median', c='b', linewidth=2.0, linestyle='dotted', zorder=5,
-                )
-
-        
-            ## Texts for `ax`
-            ax.text(
-                *[(-0.08,1.06),(-0.15,1.08)][polar], 
-                f" $\mu$:  {orientsingle.circmean:5.1f}$\degree$\n"+
-                f"$\mu_m$: {orientsingle.median:5.1f}$\degree$", 
-                fontsize=8, va='bottom', ha='left', transform=ax.transAxes,
+            orientsingle.plot(
+                polar=polar,
+                fig=subfig,
+                # in_parentheses=obs_type,
+                add_cbar=False, 
+                ax_colorbar=None,
             )
-            
-            
-            
-            if self.if_selection:
-                
-                ax.text(
-                    1.13, 1.06, 
-                    f"{int((1-self.alpha_CI[0])*100)}%CI: {orientsingle.CI1_vonMises:4.1f}$\degree$\n"+
-                    f"$\kappa$: {orientsingle.kappa:.2E} ", 
-                    fontsize=8, va='bottom', ha='right', transform=ax.transAxes,
-                )
-            
-            else:
-                
-                ## Scatter: (azimuth, CC)
-                if polar:
-                    
-                    ## modified due to upgrade of matplotlib ver. 3.3
-#                     _mappable = ax.scatter(
-#                         np.deg2rad(orientsingle.ar_orient), 
-#                         orientsingle.ar_cc*ax.get_rmax(), 
-#                         s=100, c=orientsingle.ar_cc, alpha=0.8,
-#                         marker='.', linewidth=0.6, 
-#                         edgecolor='face', facecolor='none', 
-#                         norm=norm_cc, cmap=colormap_cc, zorder=4., 
-#                     )
-                    _mappable = ax.scatter(
-                        np.deg2rad(orientsingle.ar_orient), 
-                        orientsingle.ar_cc*ax.get_rmax(), 
-                        s=30, alpha=0.8,
-                        marker='o', linewidth=0.6, 
-                        edgecolor=colormap_cc(norm_cc(orientsingle.ar_cc)), 
-                        facecolor='none', 
-                        zorder=4., 
-                    )
-                else:
-                    _mappable = ax.scatter(
-                        orientsingle.ar_orient, 
-                        orientsingle.ar_cc*ax.get_ylim()[1], 
-                        s=100, c=orientsingle.ar_cc, alpha=0.8,
-                        marker='.', linewidth=0.6, 
-                        edgecolor='face', facecolor='none', 
-                        norm=norm_cc, cmap=colormap_cc, zorder=4., 
-                    )
-                _mappable.set_facecolor('none')
-                
-                ax.text(
-                    *[(1.06,1.06),(1.15,1.08)][polar],
-                    f"MAD:{orientsingle.MAD:5.1f}$\degree$",
-                    fontsize=8, va='bottom', ha='right', transform=ax.transAxes,
-                )
-                              
+
+            ax = subfig.axes[0]
+            ax.set(xlabel='')
+
         
         ## Setting of entire figure
-        fig.text(
-            0.5, 0.0, 
-            ["Orientation azimuth [$\degree$]","Azimuthal deviation from circular mean [$\degree$]"][self.if_selection],
-            ha='center', va='top'
-        )
+        fig.supxlabel([
+            "$H_1$ azimuth [$\degree$]",
+            "Azimuthal deviation from circular mean [$\degree$]"
+        ][self.if_selection])
         if not polar:
-            fig.text(0.0, 0.5, 'Density', ha='right', va='center', rotation=90)  #'Frequency'
-            fig.text(1.0, 0.5, 'Density', ha='left', va='center', rotation=-90)
+            fig.supylabel('Density')
         
-        if self.if_selection:
-            ## Legend 
-            fig.legend(
-                (line_median, line1), 
-                ('Circular median $\mu_m$','von Mises distribution'), 
-                bbox_to_anchor=(1.,1.02), 
-                loc=1, fontsize=10
+        ## Plot legend and colorbar
+        
+        # Legend
+        subfig = subfigs[-1,-1]
+        if len(self) % ncols != 0: 
+            ax = subfig.subplots()
+            [spine.set_visible(False) for spine in ax.spines.values()]
+            [getattr(ax.axes,f"get_{xy}axis")().set_visible(False) for xy in 'xy']
+            
+            if self.if_selection:
+                labels = ["median","vonmises"]
+            else:
+                labels = ["mean","median"]
+            for label in labels:
+                ax.plot([],[],**kwargs_plot_for_legend[label])
+        
+            subfig.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.55,0.98),
+                fontsize='small'
             )    
-        else:            
-            ax_colorbar = fig.add_axes([
-                [0.08, 0.96, 0.2, 0.015],
-                [0.08, 0.978, 0.2, 0.012]
-            ][polar])
-            fig.colorbar(
+
+        else:
+            subfig.legend(
+                loc="upper center",
+                bbox_to_anchor=(0.6,-0.0),
+                fontsize='small'
+            ) 
+
+        # colorbar
+        if not self.if_selection:
+            if len(self) % ncols != 0:
+                ax_colorbar = subfig.add_axes([0.3,0.56,0.5,0.04])
+            else:
+                subfig = subfigs[-1,0]
+                ax_colorbar = subfig.add_axes([0.6,-0.1,0.5,0.04])
+            
+            subfig.colorbar(
                 plt.cm.ScalarMappable(cmap=colormap_cc, norm=norm_cc),
                 cax=ax_colorbar, ticks=bound_cc, pad=0.01,
                 spacing='proportional', orientation='horizontal',
                 #label='${C}_{UR}$'
             )
-            ax_colorbar.set_title('${C}_{UR}$',fontsize=11)
+            ax_colorbar.set_title('${C}_{\~{Z}R}$',fontsize='small')
             ax_colorbar.tick_params(
-                which='both', labelsize=10, direction='in', 
+                which='both', labelsize='small', direction='in', 
                 top=True, bottom=False, labeltop=True, labelbottom=False
             )
-            
-            ## Legend 
-            fig.legend(
-                (line_median, line_mean, line1), 
-                ('Circular median $\mu_m$','Circular mean $\mu$','von Mises distribution'), 
-                bbox_to_anchor=[(1.,1.07),(1.,1.08)][polar], 
-                loc=1, fontsize=10
-            )
-            
-        
+
         return fig
     
     def write(self, filename=None, networkname=None, format='pickle'):
@@ -477,13 +357,15 @@ class OrientAnalysis():
             columns=(
                 'station','network','circular mean',
                 'circular median', 'MAD','numeq',
-                'kappa', 'Half 95%CI', '95%CI', '2.5% percentile', '97.5% percentile', 
+                'kappa', 'Half 95%CI', '95%CI', 
+                '2.5% percentile', '97.5% percentile', 
                 'CSE', 'arc mean', 'arc SE', 'SE_Takagi_et_al', #'CMAD',
             )
         ).astype({
             'circular mean':float, 'circular median':float, 
             'MAD':float, 'numeq':int,
-            'kappa':float, '95%CI':float, '2.5% percentile':float, '97.5% percentile':float,
+            'kappa':float, '95%CI':float, 
+            '2.5% percentile':float, '97.5% percentile':float,
             'Half 95%CI':float, 'CSE':float, 'arc mean':float, 'arc SE':float, 
             'SE_Takagi_et_al':float, #'CMAD':float, 
         }).round({
@@ -505,7 +387,7 @@ class OrientAnalysis():
             axis=1
         )  #.reset_index()
         
-        if filename:
+        if filename is not None:
             if format == 'pickle':
                 df_analysis.to_pickle(filename)
             elif format == 'json':
@@ -516,7 +398,7 @@ class OrientAnalysis():
         return df_analysis
     
 
-def plotCC(df, figtitle=None, center_lonlat=(132,32), min_CC=0.5, show=False, **fig_kw):
+def plotCC(df, center_lonlat, min_CC=0.5, figtitle=None, show=False, **fig_kw):
     """Plot event distribution with cross correlation.
     Specify a result dataframe to the argument `df`.
     
@@ -526,12 +408,14 @@ def plotCC(df, figtitle=None, center_lonlat=(132,32), min_CC=0.5, show=False, **
     -----------
     df: `pandas.DataFrame`
         Specify a DataFrame with the orientation result for each event
-    figtitle: str
-        A figure title at the top
     center_lonlat: list
-        A list of longitude and latitude for an AzimuthalEquidistant plot
+        A list of longitude and latitude for an AzimuthalEquidistant plot.
+        For instance, `center_lonlat=[132.0,31.0]` is the central location with
+        the longitude of 132.0°E and the latitude of 31.0°N.
     min_CC: float, default to 0.5
-        A minimum of cross correlation
+        A minimum value of cross correlation.
+    figtitle: str, None
+        A figure title at the top
     show: bool, default to False
         plt.show()
     fig_kw: kwargs passed to `plt.figure()`
@@ -545,18 +429,14 @@ def plotCC(df, figtitle=None, center_lonlat=(132,32), min_CC=0.5, show=False, **
     fig.suptitle(figtitle)
     
     ## Colormap settings
-    colormap_cc = mcolors.ListedColormap(
-        ("gray","lightsalmon","darkorange","red"), N=256
-    )
-    bound_cc = np.array([min_CC,0.7,0.9,1.0])
-    norm_cc = mcolors.BoundaryNorm(bound_cc, ncolors=256, extend='min')
+    bound_cc, norm_cc = get_cbar_bound_norm(min_CC=min_CC)
     
     ## BAZ vs. CC
     ax_CC = fig.add_subplot(2,2,2, projection="polar")
     ax_CC.set(
         theta_zero_location="N", theta_direction=-1, rlabel_position=330, 
         ylim=(0,1), yticks=(0.5, 0.7, 0.9, ), 
-        xlabel="BAZ [degrees]", #ylabel="$C_{\hat{Z}R}$",
+        xlabel="Event back azimuth [$\degree$]", #ylabel="$C_{\~{Z}R}$",
     )
 
     ax_CC.scatter(
@@ -569,7 +449,7 @@ def plotCC(df, figtitle=None, center_lonlat=(132,32), min_CC=0.5, show=False, **
     ax_or.set(
         xlim=(0,360),ylim=(0,360),
         xticks=range(0,361,45), yticks=range(0,361,45), 
-        xlabel="BAZ [degrees]", ylabel="Estimated orientation [degrees]"
+        xlabel="Event back azimuth [$\degree$]", ylabel="Estimated $H_1$ azimth [$\degree$]"
     )
     
     ax_or.scatter(
@@ -598,19 +478,24 @@ def plotCC(df, figtitle=None, center_lonlat=(132,32), min_CC=0.5, show=False, **
     )
     
     ## Colorbar
-    ax_colorbar = fig.add_axes([0.07, 0.955, 0.20, 0.01]) # fig.add_subplot(gs_events[-4,0:3])
+    ax_colorbar = fig.add_axes([0.07, 0.965, 0.20, 0.02]) # fig.add_subplot(gs_events[-4,0:3])
     colorbar = fig.colorbar(
         mappable=plt.cm.ScalarMappable(cmap=colormap_cc, norm=norm_cc), 
         ticks=bound_cc,
         cax=ax_colorbar, 
-        label='${C}_{UR}$', 
+        # label='${C}_{\~{Z}R}$', 
         orientation='horizontal',
         spacing='proportional', 
         pad=0.01, 
     )
+    ax_colorbar.set_title('${C}_{\~{Z}R}$',fontsize='small')
+    ax_colorbar.tick_params(
+        which='both', direction='in', labelsize='small', 
+        top=True, bottom=False, labeltop=True, labelbottom=False
+    )
     
 #     colorbar.set_label('${C}_{UR}$', loc='top', fontsize=12)
-    ax_colorbar.xaxis.set_ticks_position("top")
+    # ax_colorbar.xaxis.set_ticks_position("top")
 
     if show:
         plt.show()

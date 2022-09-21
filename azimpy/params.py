@@ -1,5 +1,5 @@
 """
-Default parameters.
+Restore default parameters and functions.
 
 This file is a part of `AzimPy`.
 This project is licensed under the MIT License.
@@ -28,12 +28,55 @@ SOFTWARE.
 ------------------------------------------------------------------------------
 """
 
+import numpy as np
+import matplotlib.colors as mcolors
 from matplotlib import rc, rcParams
 
 kuiper_level_dict = dict(zip(
     [0.15, 0.1, 0.05, 0.025, 0.01],
     [1.537, 1.62, 1.747, 1.862, 2.001]
 ))
+
+colormap_cc = mcolors.ListedColormap(
+    ("gray","lightsalmon","darkorange","red"), N=256
+)
+kwargs_plot_for_legend = {
+    "mean": dict(
+        label='Circular mean $\mu$',
+        c='darkgreen',
+        linewidth=1.5,
+        linestyle='dashed'
+    ),
+    "median": dict(
+        label='Circular median $\mu_m$',
+        c='b',
+        linewidth=2.0,
+        linestyle='dotted',
+    ),
+    "vonmises": dict(
+        label='von Mises distribution',
+        c='darkgreen',
+        linestyle='solid'
+    ),
+}
+
+dict_OBStypes = {
+    360: "BB",
+    1: "1s",
+    20: "20s",
+    120: "120s",
+}
+
+
+## Functions
+
+def get_cbar_bound_norm(min_CC=0.5):
+
+    bound_cc = np.array([min_CC,0.7,0.9,1.0])
+    norm_cc = mcolors.BoundaryNorm(bound_cc, ncolors=256, extend='min')
+
+    return bound_cc, norm_cc
+
 
 def set_rcparams():
     

@@ -1,6 +1,12 @@
 # AzimPy
 Estimate horizontal orientation of ocean-bottom seismograph
 
+![PyPI](https://img.shields.io/pypi/v/AzimPy)
+![PyPI - Python Version](https://img.shields.io/pypi/pyversions/AzimPy)
+![PyPI - Format](https://img.shields.io/pypi/format/AzimPy)
+![PyPI - Status](https://img.shields.io/pypi/status/AzimPy)
+![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yasuit21/AzimPy)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/yasuit21/AzimPy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/521535371.svg)](https://zenodo.org/badge/latestdoi/521535371)
 
@@ -14,10 +20,19 @@ This module also provides other classes and functions for statistical analysis o
 
 ## How to install
 
-### [Recommended] Using `conda` environment and `pip install` locally
+### [Recommended] Install `AzimPy` from `PyPI` in a new `conda` environment 
 
 ```
-$ conda create -n azimpy-test python=3.9 pip ipython
+$ conda create -n azimpy-test python=3.9 ipython astropy "matplotlib>=3.5" "scipy>=1.4" pandas numpy tqdm
+$ conda activate azimpy-test
+(azimpy-test) $ conda install -c conda-forge "obspy>=1.3" 
+(azimpy-test) $ python -m pip install AzimPy==0.2.0
+```
+
+- [Alternative] `pip install` locally in the environment 
+
+```
+$ conda create -n azimpy-test python=3.9 ipython
 $ conda activate azimpy-test
 (azimpy-test) $ git clone -b v0.2.0 https://github.com/yasuit21/AzimPy.git
 (azimpy-test) $ cd AzimPy

@@ -4,7 +4,7 @@ Estimate horizontal orientation of ocean-bottom seismograph
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/521535371.svg)](https://zenodo.org/badge/latestdoi/521535371)
 
-Copyright (c) 2022 **Yasunori Sawaki**[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391)
+Copyright (c) 2022 Yasunori Sawaki[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391) All rights reserved.
 
 [`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source Python package for estimating the horizontal orientation of ocean-bottom seismographs. 
 This package performs the Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 

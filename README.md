@@ -14,25 +14,32 @@ Copyright (c) 2022 Yasunori Sawaki[![ORCID](https://orcid.org/sites/default/file
 
 [`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source Python package for estimating the horizontal orientation of ocean-bottom seismographs. 
 This package performs the Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
-One of the main classes `OrientOBS` is inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), which allows us to search for earthquake catalog as a web client and compute Rayleigh-wave polarizations. 
-This module also provides other classes and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
+One of the main classes `OrientOBS`, inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html),  searches an earthquake catalog for teleseismic events as a web client and computes Rayleigh-wave polarizations for each event–station pair. 
+This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`) and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
+## Terms of use
+- Cite a Zenodo DOI for the specific version of `AzimPy` when you publish your reseach or make a presentation. The DOI representing the specific version is probably found through [the Zenodo page for the latest version](https://doi.org/10.5281/zenodo.6972713).
+- This package is under development, so any bug reports and suggestions are welcome! 
+
+#### Use cases
+<!-- If you use this package to present the results, please cite the  -->
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., in revision at *Geophys. J. Int.*
 
 ## How to install
 
 ### [Recommended] Install `AzimPy` from `PyPI` in a new `conda` environment 
 
 ```
-$ conda create -n azimpy-test python=3.9 ipython astropy "matplotlib>=3.5" "scipy>=1.4" pandas numpy tqdm
+$ conda create -n azimpy-test python=3.9 jupyter astropy "matplotlib>=3.5" "scipy>=1.4" pandas numpy tqdm
 $ conda activate azimpy-test
 (azimpy-test) $ conda install -c conda-forge "obspy>=1.3" 
-(azimpy-test) $ python -m pip install AzimPy==0.2.0
+(azimpy-test) $ python -m pip install AzimPy
 ```
 
 - [Alternative] `pip install` locally in the environment 
 
 ```
-$ conda create -n azimpy-test python=3.9 ipython
+$ conda create -n azimpy-test python=3.9 jupyter
 $ conda activate azimpy-test
 (azimpy-test) $ git clone -b v0.2.0 https://github.com/yasuit21/AzimPy.git
 (azimpy-test) $ cd AzimPy
@@ -42,17 +49,19 @@ $ conda activate azimpy-test
 ### Optional installation : [`rpy2`](https://rpy2.github.io/)
 
 #### Installation of `R`
-Note that this installation will take time.
+
 ```
 (azimpy-test) $ conda install r-essentials r-base r-circular
 ```
-Then, set environental variables.
+Note that this installation will take time.
+
+Then, set environent variables.
 ```
 export R_HOME=/path/to/envs/azimpy-test/lib/R
 export R_USER=/path/to/envs/azimpy-test/lib/python3.9/site-packages/rpy2
 ```
 
-#### Installation of `rpy2` via `pip`
+#### Installation of `rpy2` in `PyPI`
 ```
 (azimpy-test) $ python -m pip install rpy2
 (azimpy-test) $ python -c "import azimpy"
@@ -96,7 +105,7 @@ obs.find_stream(
 )
 ```
 
-Then, the output dataframe will be pickled as `stationA1_020_040.pickle` under `/path/to/output/station` directory.
+Then, the output dataframe will be pickled as `stationA1_020_040.pickle` under `/path/to/output/stationA1` directory. The pickled dataframe can be loaded by `pd.read_pickle()`.
 
 ### Perform circular statistics and make a plot
 
@@ -210,21 +219,16 @@ for stationName in stationList:
 
 
 ## Note
-- The supported format is only `SAC`, but you may use some other formats.
+- `SAC` format is only supported, but you may use some other formats.
 - The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. No waveform data in websites and repository are available in this package at this moment.
 - The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
-- `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs `Kuiper test`.
+- `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs the Kuiper test.
 
-
-### Use case
-<!-- ### Cite -->
-<!-- If you use this package to present the results, please cite the  -->
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., in revision at *Geophys. J. Int.*
 
 ### References
-- Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012, Determination of New Zealand ocean bottom seismometer orientation via Rayleigh-wave polarization. Seismol. Res. Lett., 83, 704–713. https://doi.org/10.1785/0220110128 
-- Doran, A.K. & Laske, G., 2017, Ocean‐bottom deismometer instrument orientations via automated Rayleigh‐wave arrival‐angle measurements. Bull. Seismol. Soc. Am., 107, 691–708. https://doi.org/10.1785/0120160165 
-- Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. Seismol. Res. Lett., 90, 2175–2187. https://doi.org/10.1785/0220190093
+- Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012, Determination of New Zealand ocean bottom seismometer orientation via Rayleigh-wave polarization. *Seismol. Res. Lett.*, 83, 704–713. https://doi.org/10.1785/0220110128 
+- Doran, A.K. & Laske, G., 2017, Ocean‐bottom deismometer instrument orientations via automated Rayleigh‐wave arrival‐angle measurements. *Bull. Seismol. Soc. Am.*, 107, 691–708. https://doi.org/10.1785/0120160165 
+- Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. *Seismol. Res. Lett.*, 90, 2175–2187. https://doi.org/10.1785/0220190093
 - [Concept DOI for the latest `AzimPy`: `10.5281/zenodo.6972713`](https://doi.org/10.5281/zenodo.6972713)
     
 ## Acknowledgments

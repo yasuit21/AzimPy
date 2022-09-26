@@ -30,6 +30,7 @@ SOFTWARE.
 ------------------------------------------------------------------------------
 """
 
+from cmath import pi
 import sys
 import os
 from pathlib import Path
@@ -1045,6 +1046,36 @@ class OrientSingle():
         self.CI1_vonMises = np.rad2deg(stats.vonmises.ppf(1.-self.alpha_CI/2, kappa=self.kappa))
         self.std2 = np.std(circdist(self.ar_orient, self.arcmean, deg=True))
         self.std3 = takagi_error(self.ar_orient, boot_weight)
+
+    def write_obj(self, filepath):
+        """Write out the object as a pickled file.
+
+        Parameter:
+        -----------
+        filepath: str, pathlib.Path
+            Path to the output file.
+            e.g., `/path/to/stationA1_020_040_boot.pickle`
+        """
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load_obj(filepath):
+        """Load the existing OrientSingle object as a pickled file.
+
+        Parameter:
+        -----------
+        filepath: str, pathlib.Path
+            Path to the output file.
+            e.g., `/path/to/stationA1_020_040_boot.pickle`
+        
+        Returns: azimpy.OrientSingle
+        """
+        orientsingle = pd.read_pickle(filepath)
+        
+        return orientsingle
+
     
     def plot(
         self, polar=True, fig=None,

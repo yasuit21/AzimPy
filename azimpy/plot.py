@@ -168,7 +168,7 @@ class OrientAnalysis():
         )
         return _str
         
-    def add_station(self, df_orient, stationname, period=None):
+    def add_station(self, df_orient=None, stationname=None, orientsingle_path=None, period=None):
         """Perform circular statistics for each station.
         The object will be appended in the list `.stations`.
 
@@ -178,21 +178,30 @@ class OrientAnalysis():
             A result dataframe by `OrientOBS`
         stationname: str
             A station name for the result dataframe
+        orientsingle_path: str, pathlib.Path
+            Give an orientsingle object instead of using df_orient.
+            If not None, `df_orient` and `stationname` are ignored.
         """
 
         in_parentheses = self.dict_OBStypes.get(period)
+
+        if orientsingle_path is not None:
+            orientsingle = pd.read_pickle(orientsingle_path)
+        else:
+            if (df_orient is None) or (stationname is None):
+                raise ValueError('Both df_orient and stationname must be given.')
         
-        try:
-            orientsingle = OrientSingle(
-                df_orient, stationname, 
-                self.if_selection, 
-                in_parentheses=in_parentheses,
-                **self._kw_orientsingle,
-            )
-        except IndexError:
-            pass
-        except PvalueError:
-            pass
+            try:
+                orientsingle = OrientSingle(
+                    df_orient, stationname, 
+                    self.if_selection, 
+                    in_parentheses=in_parentheses,
+                    **self._kw_orientsingle,
+                )
+            except IndexError:
+                pass
+            except PvalueError:
+                pass
 
         self.stations.append(orientsingle)
 

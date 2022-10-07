@@ -2,6 +2,7 @@ _trash/
 Untitled.ipynb
 __pycache__
 .ipynb_checkpoints
+memo.md
 
 # directories for `python setup.py sdist bdist_wheel`
 build/

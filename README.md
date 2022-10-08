@@ -22,7 +22,7 @@ This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`
 - This package is under development, so any bug reports and suggestions are welcome! 
 
 #### Use cases
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press.
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press, doi:10.1093/gji/ggac397
 
 ## How to install
 

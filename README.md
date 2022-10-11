@@ -8,7 +8,7 @@ Estimate horizontal orientation of ocean-bottom seismograph
 ![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/yasuit21/AzimPy)
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/yasuit21/AzimPy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![DOI](https://zenodo.org/badge/521535371.svg)](https://zenodo.org/badge/latestdoi/521535371)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7184189.svg)](https://doi.org/10.5281/zenodo.7184189)
 
 Copyright (c) 2022 Yasunori Sawaki[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391) All rights reserved.
 

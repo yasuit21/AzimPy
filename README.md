@@ -22,7 +22,7 @@ This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`
 - This package is under development, so any bug reports and suggestions are welcome! 
 
 #### Use cases
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press, doi:10.1093/gji/ggac397
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press, https://doi.org/10.1093/gji/ggac397
 
 ## How to install
 
@@ -225,6 +225,7 @@ for stationName in stationList:
 
 
 ### References
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press, https://doi.org/10.1093/gji/ggac397
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012, Determination of New Zealand ocean bottom seismometer orientation via Rayleigh-wave polarization. *Seismol. Res. Lett.*, 83, 704–713. https://doi.org/10.1785/0220110128 
 - Doran, A.K. & Laske, G., 2017, Ocean‐bottom deismometer instrument orientations via automated Rayleigh‐wave arrival‐angle measurements. *Bull. Seismol. Soc. Am.*, 107, 691–708. https://doi.org/10.1785/0120160165 
 - Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. *Seismol. Res. Lett.*, 90, 2175–2187. https://doi.org/10.1785/0220190093

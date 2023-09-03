@@ -41,6 +41,7 @@ from typing import Union, List, Tuple
 import operator
 import pickle
 import copy
+import re
 import warnings
 import tempfile
 # import argparse
@@ -95,6 +96,9 @@ class OrientOBS(Client):
         Default to 9, which corresponds to JST.
     base_url: str = 'IRIS'
         Institution name with earthquake catalog.
+    read_func: function, default to `obspy.read`
+        The read function for stream.
+        Specify when you use WIN/WIN32 formats.
     See `Client.__init__.__doc__`(https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html)
     for other arguments.
     
@@ -118,7 +122,7 @@ class OrientOBS(Client):
     ... '/path/to/datadir',
     ... output_path='/path/to/output/station',
     ... polezero_fpath='/path/to/polezero/hoge.paz',
-    ... fileformat=f'*.*.%y%m%d%H%M.sac',
+    ... filenameformat=f'*.*.%y%m%d%H%M.sac',
     ... freqmin=1./40, freqmax=1./20,
     ... max_workers=4,
     ... vel_surface=4.0,
@@ -150,6 +154,7 @@ class OrientOBS(Client):
         self, 
         base_url='IRIS',
         timezone=9,
+        read_func=ob.read,
         **webclient, 
     ):
         """Inits OrientOBS with arguments for 
@@ -158,6 +163,8 @@ class OrientOBS(Client):
         
         super().__init__(base_url, **webclient)
         self._timezone = timezone
+
+        self._read = read_func
 
     @property
     def timezone(self):
@@ -325,9 +332,11 @@ class OrientOBS(Client):
         parent_path, 
         output_path, 
         polezero_fpath,
-        fileformat='*.*.%y%m%d%H%M.sac',
+        fileformat="sac",
+        filenameformat='*.*.%y%m%d%H%M.sac',
         udcomp='U',
         hcomps=('H1','H2'),
+        channels_excluded=["PG","DP","HY"],
         filelength='60m', 
         freqmin=0.02, freqmax=0.04,
         distmin=5., distmax=120.,
@@ -359,8 +368,8 @@ class OrientOBS(Client):
         polezero_fpath:
             The path to the polezero file to deconvolve instrumental response.
             If set to None, the instrumental response will not be deconvolved.
-        fileformat: str = `*.*.%y%m%d%H%M.sac`
-            Fileformat of input waveforms (three components) in `parent_path`. 
+        filenameformat: str = `*.*.%y%m%d%H%M.sac`
+            filenameformat of input waveforms (three components) in `parent_path`. 
             You can use `datetime` format with asterisks `*`. For instance,
             - `ABC03.*.%y%m%d%H%M.sac`
                 can load `ABC03.U.1408100800.sac`, `ABC03.H1.1408100800.sac`,
@@ -438,10 +447,12 @@ class OrientOBS(Client):
         self.time_before_arrival = time_before_arrival
         self.time_after_arrival = time_after_arrival
         
-        suffix = fileformat.split(".")[-1]
-        stream_stats = ob.read(
-            str([*self.parent_path.glob(f'*.{suffix}')][0])
-        )[0].stats
+        suffix = filenameformat.split(".")[-1]
+        if re.match(f"[^/]+.{fileformat}$", filenameformat, re.IGNORECASE) is None:
+            file4stats = [*self.parent_path.glob(f'*')][0]
+        else:
+            file4stats = [*self.parent_path.glob(f'*.{suffix}')][0]
+        stream_stats = self._read(file4stats)[0].stats
         # chtbl = self.chtbl.loc[stream_stats.station]
         
         output = np.zeros([len(self.events), 5]) * np.nan
@@ -487,20 +498,21 @@ class OrientOBS(Client):
                     stream = ob.Stream()
 
                     for filetime in list_datetime_for_datafile:
-                        # fileformat = f"{self.parent_path.name}.*.{filetime}.sac"
-                        filename_obsdata = filetime.strftime(fileformat)
+                        # filenameformat = f"{self.parent_path.name}.*.{filetime}.sac"
+                        filename_obsdata = filetime.strftime(filenameformat)
                         filepath = self.parent_path/filename_obsdata
                         ## Check if the number of files are 1+ or 0 
                         ## HACK: Path.exists() cannot be used because * is included
                         if len(set(self.parent_path.glob(filename_obsdata))):
-                            stream += ob.read(filepath)
+                            stream += self._read(filepath)
 
                     ## Merge the loaded traces into each channel (component)
                     stream.merge()
                     
                     ## HACK: If including a pressure gauge, it is excluded from `stream`
-                    for tr in stream.select(channel='PG')+stream.select(channel='DP'):
-                        stream.remove(tr)
+                    for c in channels_excluded:
+                        for tr in stream.select(channel=c):
+                            stream.remove(tr)
                     
                     ## check for masked array
                     if not len(stream):

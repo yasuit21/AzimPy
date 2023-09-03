@@ -96,7 +96,7 @@ def set_rcparams():
     rc('axes', grid=True, linewidth=1.0, axisbelow=True)
     rc('axes.grid', axis='both')
 
-    rc('lines', linestyle='-', linewidth=1.0, marker=None)
+    rc('lines', linestyle='-', linewidth=1.0)
 
     rc('grid', linewidth=0.5, linestyle='--', alpha=0.8)
 

@@ -84,6 +84,7 @@ from .orientation import OrientOBS
 from .plot import OrientSingle, OrientAnalysis, plotCC
 from .utils import read_chtbl, read_paz
 from .params import set_rcparams, dict_OBStypes
+from ._version import __version__
 
 ## update rcParams
 set_rcparams()

@@ -18,28 +18,30 @@ One of the main classes `OrientOBS`, inherited from [`obspy.clients.fdsn.Client`
 This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`) and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
 ## Terms of use
-- Cite an article below (Sawaki et al., in press) and a Zenodo DOI for the specific version of `AzimPy` when you publish your reseach or make a presentation. The DOI representing the specific version is probably found through [the Zenodo page for the latest version](https://doi.org/10.5281/zenodo.6972713).
+- Cite an article below (Sawaki et al., 2023, GJI) and a Zenodo DOI for the specific version of `AzimPy` when you publish your reseach or make a presentation. The DOI representing the specific version is probably found through [the Zenodo page for the latest version](https://doi.org/10.5281/zenodo.6972713).
 - This package is under development, so any bug reports and suggestions are welcome! 
 
 #### Use cases
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, 232(2), 1376–1392, https://doi.org/10.1093/gji/ggac397
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., (2023) Seafloor depth controls seismograph orientation uncertainty, *Geophys. J. Int.*, 232(2), 1376–1392, https://doi.org/10.1093/gji/ggac397
 
 ## How to install
 
 ### [Recommended] Install `AzimPy` from `PyPI` in a new `conda` environment 
 
+You may replace `mamba` with `conda`.
+
 ```
-$ conda create -n azimpy-test python=3.9 jupyter astropy "matplotlib>=3.5" "scipy>=1.4" pandas numpy tqdm
-$ conda activate azimpy-test
-(azimpy-test) $ conda install -c conda-forge "obspy>=1.3" 
+$ mamba create -n azimpy-test python=3.10 jupyter astropy "matplotlib>=3.5" "scipy>=1.4" pandas numpy tqdm
+$ mamba activate azimpy-test
+(azimpy-test) $ mamba install -c conda-forge "obspy>=1.3" 
 (azimpy-test) $ python -m pip install AzimPy
 ```
 
 - [Alternative] `pip install` locally in the environment 
 
 ```
-$ conda create -n azimpy-test python=3.9 jupyter
-$ conda activate azimpy-test
+$ mamba create -n azimpy-test python=3.10 jupyter
+$ mamba activate azimpy-test
 (azimpy-test) $ git clone -b v0.2.0 https://github.com/yasuit21/AzimPy.git
 (azimpy-test) $ cd AzimPy
 (azimpy-test) $ python -m pip install .
@@ -50,7 +52,7 @@ $ conda activate azimpy-test
 #### Installation of `R`
 
 ```
-(azimpy-test) $ conda install r-essentials r-base r-circular
+(azimpy-test) $ mamba install r-essentials r-base r-circular
 ```
 Note that this installation will take time.
 

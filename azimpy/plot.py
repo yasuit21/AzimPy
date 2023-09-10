@@ -30,6 +30,7 @@ SOFTWARE.
 
 from pathlib import Path
 from functools import partial
+import warnings
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -385,6 +386,14 @@ class OrientAnalysis():
         }).set_index('station')
         #df_analysis.kappa = df_analysis.kappa.map(lambda x: '{0:.3e}'.format(x))
 
+        ## XXX: This would not create keyword aliases in saved data
+        ## looking for an alternative way
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)
+            df_analysis.circular_mean = df_analysis['circular mean']
+            df_analysis.h1azimuth = df_analysis['circular mean']
+            df_analysis.uncertainty = df_analysis['Half 95%CI']
+
         list_station = [sta.name for sta in self.stations]
         df_analysis = pd.concat(
             [
@@ -405,6 +414,31 @@ class OrientAnalysis():
                 df_analysis.to_csv(filename)
         
         return df_analysis
+    
+
+def read_result(filename):
+
+    filename = Path(filename)
+    if not filename.exists():
+        raise FileNotFoundError(f'`{str(filename)}` does not exist.')
+    
+    suffix = filename.suffix.strip('.')
+    print(suffix)
+    if suffix not in ('csv','json','pickle','pkl'):
+        raise Exception('File format must be csv, json, or pickle.')
+    
+    if suffix == 'pkl':
+        suffix = 'pickle'
+
+    df_analysis = getattr(pd, f'read_{suffix}')(filename)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        df_analysis.circular_mean = df_analysis['circular mean']
+        df_analysis.h1azimuth = df_analysis['circular mean']
+        df_analysis.uncertainty = df_analysis['Half 95%CI']
+    
+    return df_analysis
     
 
 def plotCC(df, center_lonlat, min_CC=0.5, figtitle=None, show=False, **fig_kw):

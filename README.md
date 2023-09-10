@@ -79,6 +79,7 @@ import obspy as ob
 from azimpy import OrientOBS
 
 ## Initialize web client
+## Specity the timezone of recording data
 obs = OrientOBS(base_url='USGS', timezone=9)
 
 ## Query earthquake event catalog
@@ -96,15 +97,19 @@ obs.find_stream(
     '/path/to/datadir',
     output_path='/path/to/output/stationA1',
     polezero_fpath='/path/to/polezero/hoge.paz',
-    fileformat=f'*.*.%y%m%d%H%M.sac',
+    fileformat="sac",
+    filenameformat=f'*.*.%y%m%d%H%M.sac',
     freqmin=1./40, freqmax=1./20,
     max_workers=4,
     vel_surface=4.0,
     time_before_arrival=-20.0,
     time_after_arrival=600.0,
     distmin=5., distmax=120.,
+    read_func=ob.read
 )
 ```
+Note that `fileformat` was renamed as `filenameformat` in `v0.3.0`. `fileformat` denotes the data format of the records. 
+Also, a user-defined read function can be incorpolated in `v0.3.0`. Specify the function in `read_func` argument. This would allow us to read data recorded by local formats such as `WIN/WIN32`, which are not supported by the `ObsPy`'s read function. 
 
 Then, the output dataframe will be pickled as `stationA1_020_040.pickle` under `/path/to/output/stationA1` directory. The pickled dataframe can be loaded by `pd.read_pickle()`.
 
@@ -114,101 +119,138 @@ Then, the output dataframe will be pickled as `stationA1_020_040.pickle` under `
 
 The example uses a single station `stationA1`.
 
-```python
-import pandas as pd
-from azimpy import OrientSingle, read_chtbl
+1. Perform analysis and save as pickled data
+    ```python
+    import pandas as pd
+    from azimpy import OrientSingle, read_chtbl
 
-## Init params
-min_CC = 0.5
-alpha_CI = 0.05  ## 100(1-a)% CI
-bootstrap_iteration = 5000
+    ## Init params
+    min_CC = 0.5
+    alpha_CI = 0.05  ## 100(1-a)% CI
+    bootstrap_iteration = 5000
 
-## The output dataframe of orientations
-df_orient = pd.read_pickle(
-    '/path/to/output/stationA1/stationA1_020_040.pickle'
-)
+    ## The output dataframe of orientations
+    df_orient = pd.read_pickle(
+        '/path/to/output/stationA1/stationA1_020_040.pickle'
+    )
 
-## Init OrientSingle for circular statistics
-orientsingle_raw = OrientSingle(
-    df_orient, 'stationA1', 
-    if_selection=False,  # w/o bootstrap analysis
-    min_CC=min_CC, weight_CC=True,
-)
-orientsingle_boot = OrientSingle(
-    df_orient, 'stationA1', 
-    if_selection=True,  # perform bootstrap analysis
-    min_CC=min_CC, weight_CC=True, K=5.0,
-    bootstrap_iteration=bootstrap_iteration, alpha_CI=alpha_CI
-)
+    ## Init OrientSingle for circular statistics
+    orientsingle_raw = OrientSingle(
+        df_orient, 'stationA1', 
+        if_selection=False,  # w/o bootstrap analysis
+        min_CC=min_CC, weight_CC=True,
+    )
+    orientsingle_boot = OrientSingle(
+        df_orient, 'stationA1', 
+        if_selection=True,  # perform bootstrap analysis
+        min_CC=min_CC, weight_CC=True, K=5.0,
+        bootstrap_iteration=bootstrap_iteration, alpha_CI=alpha_CI
+    )
+    ## Save orientsingle objects as pickled data
+    orientsingle_raw.write_obj(
+        '/path/to/output/orientsingle/raw/stationA1_020_040.pickle'
+    )
+    orientsingle_boot.write_obj(
+        '/path/to/output/orientsingle/boot/stationA1_020_040.pickle'
+    )
+    ```
+1. Plot the result
+    ```py
+    ## Load orientsingle objects
+    ## You may skip this part
+    orientsingle_raw = OrientSingle.load_obj(
+        '/path/to/output/orientsingle/raw/stationA1_020_040.pickle'
+    )
+    orientsingle_boot = OrientSingle.load_obj(
+        '/path/to/output/orientsingle/boot/stationA1_020_040.pickle'
+    )
 
-## Init a figure with subfigures
-fig = plt.figure(figsize=[8,4])
-subfigs = fig.subfigures(nrows=1, ncols=2).flatten()
+    ## Init a figure with subfigures
+    fig = plt.figure(figsize=[8,4])
+    subfigs = fig.subfigures(nrows=1, ncols=2).flatten()
 
-## Plot for `orientsingle_raw`
-orientsingle_raw.plot(
-    polar=True, 
-    fig=subfigs[0], in_parentheses='BB',
-    add_cbar=True
-)
-subfigs[0].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+    ## Plot for `orientsingle_raw`
+    orientsingle_raw.plot(
+        polar=True, 
+        fig=subfigs[0], in_parentheses='BB',
+        add_cbar=True
+    )
+    subfigs[0].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
 
-## Plot for `orientsingle_boot`
-orientsingle_boot.plot(
-    fig=subfigs[1], in_parentheses='BB',
-)
-subfigs[1].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
+    ## Plot for `orientsingle_boot`
+    orientsingle_boot.plot(
+        fig=subfigs[1], in_parentheses='BB',
+    )
+    subfigs[1].legend(loc=1, bbox_to_anchor=(1,1.15), fontsize='small')
 
-## Show or save the figure
-fig.savefig()
-plt.show()
-```
+    ## Show or save the figure
+    fig.savefig('/path/to/fig/stationA1_020_040.png')
+    plt.show()
+    ```
 ![](./images/sample/single.png)
 
 #### Multiple stations
 The example uses multiple stations whose names are `stationAX`.
 
-```python
-from azimpy import OrientAnalysis
+1. Initialize `OrientAnalysis`
+    ```python
+    from azimpy import OrientAnalysis
 
-stationList = ['stationA1','stationA2','stationA3','stationA4']
+    stationList = ['stationA1','stationA2','stationA3','stationA4']
 
-## Channeltable including above stations' info
-df_chtbl = read_chtbl('/path/to/channeltable.txt')
-df_chtbl = df_chtbl.query('comp.str.endswith("U")')
+    ## Channeltable including above stations' info
+    df_chtbl = read_chtbl('/path/to/channeltable.txt')
+    df_chtbl = df_chtbl.query('comp.str.endswith("U")')
 
-## Init OrientAnalysis for circular statistics
-oa_raw = OrientAnalysis(
-    if_selection=False,  # w/o bootstrap analysis
-    df_chtbl=df_chtbl, 
-    min_CC=min_CC, 
-)
-oa_boot = OrientAnalysis(
-    if_selection=True,  # perform bootstrap analysis
-    df_chtbl=df_chtbl, 
-    min_CC=min_CC, alpha_CI=alpha_CI, 
-    bootstrap_iteration=bootstrap_iteration, 
-)
-
-for stationName in stationList:
-    period = df_chtbl.at[stationName,'period']
-    df_orient = pd.read_pickle(
-        f'/path/to/output/{stationName}/{stationName}_020_040.pickle'
+    ## Init OrientAnalysis for circular statistics
+    oa_raw = OrientAnalysis(
+        if_selection=False,  # w/o bootstrap analysis
+        df_chtbl=df_chtbl, 
+        min_CC=min_CC, 
     )
-    ## Add the dataframe in `oa_raw`
-    ## This is actually passed to `OrientSingle`
-    oa_raw.add_station(
-        df_orient, stationName, 
-        period=period
+    oa_boot = OrientAnalysis(
+        if_selection=True,  # perform bootstrap analysis
+        df_chtbl=df_chtbl, 
+        min_CC=min_CC, alpha_CI=alpha_CI, 
+        bootstrap_iteration=bootstrap_iteration, 
     )
-    ## Add the dataframe in `oa_boot`
-    oa_boot.add_station(
-        df_orient, stationName, 
-        period=period
-    )
-```
+    ```
+1. Store the analyzed data or perform analysis
+    - If storing the orientation data by `OrientSingle` 
+        ```py
+        for stationName in stationList:
+            period = df_chtbl.at[stationName,'period']
 
-- Plot the results using `matplotlib.pyplot`
+            ## Add the dataframe in `oa_raw`
+            oa_raw.add_station(
+                orientsingle_path=f'/path/to/output/orientsingle/raw/{stationName}_020_040.pickle',
+                period=period,
+            )
+            oa_boot.add_station(
+                orientsingle_path=f'/path/to/output/orientsingle/boot/{stationName}_020_040.pickle',
+                period=period,
+            )
+        ```
+    - If performing analysis
+        ```py
+        for stationName in stationList:
+            period = df_chtbl.at[stationName,'period']
+            df_orient = pd.read_pickle(
+                f'/path/to/output/{stationName}/{stationName}_020_040.pickle'
+            )
+            ## Add the dataframe in `oa_raw`
+            ## This is actually passed to `OrientSingle`
+            oa_raw.add_station(
+                df_orient, stationName, 
+                period=period
+            )
+            ## Add the dataframe in `oa_boot`
+            oa_boot.add_station(
+                df_orient, stationName, 
+                period=period
+            )
+        ```
+1. Plot the results using `matplotlib.pyplot`
     - Original results w/o bootstrap resampling
     ```python
     fig = oa_raw.plot()
@@ -216,6 +258,35 @@ for stationName in stationList:
     - Results of bootstrap analysis
     ```python
     fig = oa_boot.plot()
+    ```
+1. Save the results
+    ```py
+    ## Write dataframe as csv, json, or pickle
+    df_analysis = oa_boot.write(
+        "/path/to/output/orientation/StationAX_020_040.csv",
+        networkname='StationAX',
+        format='csv'
+    )
+    ```
+
+### How to read the result CSV file
+
+- Saved dataframe can be loaded as
+    ```py
+    from azimpy import read_result
+
+    df_analysis = read_result(
+        "/path/to/output/orientation/StationAX_020_040.csv"
+    )
+    ```
+- The column `station` is indexed
+- The estimated orientation is in the column `circular mean`. `circular_mean` and `h1azimuth` are aliases for `circular mean`.
+    ```py
+    df_analysis.h1azimuth
+    ```
+- The uncertainty is in the column `Half 95%CI`. `uncertainty` is the alias for `Half 95%CI`.
+    ```py
+    df_analysis.uncertainty
     ```
 
 
@@ -235,7 +306,7 @@ for stationName in stationList:
     
 ## Acknowledgments
 
-This package makes use of [`ObsPy v1.3.0`](https://github.com/obspy/obspy) for [FDSN web client services](https://www.fdsn.org/webservices/) and processing seismograms.
+This package makes use of [`ObsPy>=1.3.0`](https://github.com/obspy/obspy) for [FDSN web client services](https://www.fdsn.org/webservices/) and processing seismograms.
 
 
 ## License

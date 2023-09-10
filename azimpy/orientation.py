@@ -154,7 +154,6 @@ class OrientOBS(Client):
         self, 
         base_url='IRIS',
         timezone=9,
-        read_func=ob.read,
         **webclient, 
     ):
         """Inits OrientOBS with arguments for 
@@ -163,8 +162,6 @@ class OrientOBS(Client):
         
         super().__init__(base_url, **webclient)
         self._timezone = timezone
-
-        self._read = read_func
 
     @property
     def timezone(self):
@@ -309,7 +306,7 @@ class OrientOBS(Client):
                 operator.add, 
                 [
                     ser[1].astype('int').map('{:02}'.format) 
-                    for ser in df_events[[2,3,4,7,8,9]].iteritems()
+                    for ser in df_events[[2,3,4,7,8,9]].items()
                 ]
             )
             timeseries = pd.DataFrame(
@@ -335,7 +332,7 @@ class OrientOBS(Client):
         fileformat="sac",
         filenameformat='*.*.%y%m%d%H%M.sac',
         udcomp='U',
-        hcomps=('H1','H2'),
+        hcomps=['H1','H2'],
         channels_excluded=["PG","DP","HY"],
         filelength='60m', 
         freqmin=0.02, freqmax=0.04,
@@ -347,6 +344,8 @@ class OrientOBS(Client):
         cc_asterisk=True,
         outformat='dataframe',
         max_workers=4,
+        read_func=ob.read,
+        attribname_in_stats=None,
         ignore_BadEpicDist_warning=False,
         filter_kw=dict(corners=2,zerophase=True),
         decimate_kw=dict(factor=10,strict_length=True),
@@ -429,9 +428,32 @@ class OrientOBS(Client):
             pickled in `output_path` directory as a
             `{output_path.name}_{min_period}_{max_period}.pickle'
         """
+
+        # Specify the `read` function
+        self._read = read_func        
         
-        self.parent_path = parent_path
+        self.parent_path = Path(parent_path)
+        output_path = Path(output_path)
         output_path.mkdir(exist_ok=True, parents=True)
+
+        ## polezero: str, dict
+        ## [HACK] When each comp has the different polezero, dict contains keys of comp names. 
+        bool_polezero_by_comp = False
+        if isinstance(polezero_fpath, (str, Path)):
+            if not Path(polezero_fpath).exists():
+                raise ValueError(f'{str(polezero_fpath)} is not found.')
+            polezero_dict = read_paz(polezero_fpath)
+        elif isinstance(polezero_fpath, dict):
+            polezero_dict = polezero_fpath
+            if not polezero_dict.get('poles'):
+                if not all([polezero_dict.get(key) for key in [udcomp]+hcomps]):
+                    raise ValueError(f'Polezero dict `polezero_fpath` has wrong keys or values.')
+                bool_polezero_by_comp = True
+        else:
+            raise ValueError(
+                f'The type of `polezero_fname` {type(polezero_fpath)} is not appropreate. '
+                'Must be one of str, pathlib.Path, or dict.'
+            )
         
         ## Events output
         self.events.write(output_path/f'events_{output_path.name}.log','ZMAP')
@@ -447,15 +469,33 @@ class OrientOBS(Client):
         self.time_before_arrival = time_before_arrival
         self.time_after_arrival = time_after_arrival
         
-        suffix = filenameformat.split(".")[-1]
-        if re.match(f"[^/]+.{fileformat}$", filenameformat, re.IGNORECASE) is None:
-            file4stats = [*self.parent_path.glob(f'*')][0]
+        # suffix = filenameformat.split(".")[-1]
+        # if re.match(f"[^/]+.{fileformat}$", filenameformat, re.IGNORECASE) is None:
+        #     file4stats = [*self.parent_path.glob(f'*')][0]
+        # else:
+        #     file4stats = [*self.parent_path.glob(f'*.{suffix}')][0]
+
+        file4stats = self.parent_path/self.starttime.strftime(filenameformat)
+        stream_stats = self._read(str(file4stats))[0].stats
+
+        # Attribute dict in stats for the file format
+        if (attribname_in_stats is None) or (attribname_in_stats == fileformat.lower()):
+            self._attribname_in_stats = fileformat.lower()
         else:
-            file4stats = [*self.parent_path.glob(f'*.{suffix}')][0]
-        stream_stats = self._read(file4stats)[0].stats
+            self._attribname_in_stats = attribname_in_stats
+        if not stream_stats.get(self._attribname_in_stats):
+            raise ValueError('`attribname_in_stats` is a wrong name.')
+            
+
+        # try:
+        #     stream_stats = self._read(file4stats)[0].stats
+        # except ValueError as e:
+        #     print(file4stats)
+        #     raise e
         # chtbl = self.chtbl.loc[stream_stats.station]
         
         output = np.zeros([len(self.events), 5]) * np.nan
+        output_arrivals = [np.nan] * len(self.events)
         
         ## output for stream
         stdir = output_path/'stream'/f'{round(1./freqmax):03d}_{round(1./freqmin):03d}'
@@ -464,7 +504,8 @@ class OrientOBS(Client):
         
         estimate_azimuth_partial = partial(
             self._estimate_azimuth_for_each_event,
-            polezero_fpath=polezero_fpath,
+            polezero_dict=polezero_dict,
+            bool_polezero_by_comp=bool_polezero_by_comp,
             udcomp=udcomp,
             hcomps=hcomps,
             dphi=dphi,
@@ -504,7 +545,7 @@ class OrientOBS(Client):
                         ## Check if the number of files are 1+ or 0 
                         ## HACK: Path.exists() cannot be used because * is included
                         if len(set(self.parent_path.glob(filename_obsdata))):
-                            stream += self._read(filepath)
+                            stream += self._read(str(filepath))
 
                     ## Merge the loaded traces into each channel (component)
                     stream.merge()
@@ -535,11 +576,12 @@ class OrientOBS(Client):
                         
                 for future in futures.as_completed(future_list):
                     try:
-                        i_eve, output_event = future.result()
+                        i_eve, output_event, output_arrival = future.result()
                     except BadStreamError as e:
                         continue
                     else:
                         output[i_eve] = output_event
+                        output_arrivals[i_eve] = str(output_arrival)
                     finally:
                         pbar.update(1)
         
@@ -553,6 +595,10 @@ class OrientOBS(Client):
                     pd.DataFrame(
                         output,
                         columns=('orientation','CC','CC*','baz','delta')
+                    ),
+                    pd.DataFrame(
+                        pd.to_datetime(output_arrivals, format='%Y-%m-%dT%H:%M:%S.%fZ'),
+                        columns=['arrival_time']
                     ),
                     self.df_events
                 ], axis=1
@@ -579,7 +625,8 @@ class OrientOBS(Client):
         event, 
         params, 
         stream,
-        polezero_fpath,
+        polezero_dict,
+        bool_polezero_by_comp,
         udcomp,
         hcomps,
         dphi,
@@ -616,9 +663,16 @@ class OrientOBS(Client):
 
         ## sensitivity correction
         ## Check if properly manupulated
-        if polezero_fpath is not None: 
+        if bool_polezero_by_comp:
+            for tr in stream:
+                tr.simulate(
+                    paz_remove=polezero_dict[tr.stats.channel], #self.polezero_dict.get(int(period))
+                    pre_filt=(self.freqmin*0.5, self.freqmin, self.freqmax, self.freqmax*2.0),
+                    sacsim=True,
+                )
+        else:
             stream.simulate(
-                paz_remove=read_paz(polezero_fpath), #self.polezero_dict.get(int(period))
+                paz_remove=polezero_dict, #self.polezero_dict.get(int(period))
                 pre_filt=(self.freqmin*0.5, self.freqmin, self.freqmax, self.freqmax*2.0),
                 sacsim=True,
             )
@@ -669,7 +723,7 @@ class OrientOBS(Client):
 
         output_event = np.array([
             phi_optimal, *CCs_optimal, 
-            params['baz'], params['epicdist']
+            params['baz'], params['epicdist'],
         ])
 
         ## Save the rotated stream with the max CC* value
@@ -695,7 +749,7 @@ class OrientOBS(Client):
                 tr.stats['rotation_from_north'] = (tr.stats['rotation_from_north']+90)%360
 
 
-        outstream = st_rot + stored_stream.select(channel='*U').copy()
+        outstream = st_rot + stored_stream.select(channel=f'*{udcomp}').copy()
 
         ## Save
         outstream.write(
@@ -703,7 +757,7 @@ class OrientOBS(Client):
             format='PICKLE'
         )
         
-        return i_eve, output_event
+        return i_eve, output_event, params['arrival']
             
     def _calc_params(self, event, stats):
         origin = event.origins[0]
@@ -714,7 +768,8 @@ class OrientOBS(Client):
         
         epi_dist, _, baz = ob.geodetics.gps2dist_azimuth(
             origin.latitude, origin.longitude,
-            stats.sac.stla, stats.sac.stlo,
+            stats.get(self._attribname_in_stats).stla, 
+            stats.get(self._attribname_in_stats).stlo,
         )
         epi_dist *= 0.001
         epi_dist_deg = ob.geodetics.kilometer2degrees(epi_dist)
@@ -783,6 +838,8 @@ class OrientSingle():
         A station name for the result dataframe
     if_selection: bool
         Whether to perform bootstrap resampling
+    min_num_eq: int = 6
+        The minimum number of earthquakes to be processed
     min_CC: float = 0.5
         Minimum cross-correlation values 
         to be considered for analysis
@@ -844,6 +901,7 @@ class OrientSingle():
         df_orient:pd.DataFrame, 
         stationname, 
         if_selection:bool,
+        min_num_eq=6,
         min_CC=0.5, 
         weight_CC=True, 
         K=5.0, 
@@ -856,12 +914,12 @@ class OrientSingle():
         """Inits OrientSingle"""
 
         ## Internal params
-        self._min_num_eq = 6
         self._goodstation = True
         
         ## Init params
         self.name = stationname
         self.if_selection = if_selection
+        self.min_num_eq = min_num_eq
         self.min_CC = min_CC
         self.alpha_CI = alpha_CI
         self.circmean = np.nan
@@ -923,9 +981,9 @@ class OrientSingle():
         """
         
         ## Selection 1
-        if self.num_eq < self._min_num_eq:
+        if self.num_eq < self.min_num_eq:
             self._goodstation = False
-            raise _selfError(f'Number of EQs smaller than {self._min_num_eq}')
+            raise _selfError(f'Number of EQs smaller than {self.min_num_eq}')
 
         data_all = self.df_orient[['orientation','CC','CC*']].values
         data_all = data_all[~np.isnan(data_all[:,0])]
@@ -979,13 +1037,16 @@ class OrientSingle():
             self.ar_orient = self.ar_orient[(np.abs(deviation)<=SMAD)]
 
             self.num_eq = len(self.df_orient)
-            if self.num_eq < self._min_num_eq:
+            if self.num_eq < self.min_num_eq:
                 self._goodstation = False
-                raise _selfError(f'Number of EQs smaller than {self._min_num_eq}')
+                raise _selfError(f'Number of EQs smaller than {self.min_num_eq}')
 
 
             ## Bootstrap resampling and calculate sample mean
-            datasize = round(len(self.ar_orient)*bootstrap_fraction_in_percent)
+            datasize = max(
+                round(len(self.ar_orient)*bootstrap_fraction_in_percent),
+                self.min_num_eq
+            )
             
             if weight_CC:
                 self.ar_orient = np.array([

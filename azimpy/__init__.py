@@ -81,7 +81,7 @@ SOFTWARE.
 
 
 from .orientation import OrientOBS
-from .plot import OrientSingle, OrientAnalysis, plotCC
+from .plot import OrientSingle, OrientAnalysis, read_result, plotCC
 from .utils import read_chtbl, read_paz
 from .params import set_rcparams, dict_OBStypes
 from ._version import __version__

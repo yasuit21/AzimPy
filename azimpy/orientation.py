@@ -345,6 +345,7 @@ class OrientOBS(Client):
         outformat='dataframe',
         max_workers=4,
         read_func=ob.read,
+        file4stats=None,
         attribname_in_stats=None,
         ignore_BadEpicDist_warning=False,
         filter_kw=dict(corners=2,zerophase=True),
@@ -475,7 +476,8 @@ class OrientOBS(Client):
         # else:
         #     file4stats = [*self.parent_path.glob(f'*.{suffix}')][0]
 
-        file4stats = self.parent_path/self.starttime.strftime(filenameformat)
+        if file4stats is None:
+            file4stats = self.parent_path/self.starttime.strftime(filenameformat)
         stream_stats = self._read(str(file4stats))[0].stats
 
         # Attribute dict in stats for the file format

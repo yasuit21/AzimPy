@@ -291,7 +291,10 @@ class OrientAnalysis():
         ## Plot legend and colorbar
         
         # Legend
-        subfig = subfigs[-1,-1]
+        if nrows == 1:
+            subfig = subfigs[-1]
+        else:
+            subfig = subfigs[-1,-1]
         if len(self) % ncols != 0: 
             ax = subfig.subplots()
             [spine.set_visible(False) for spine in ax.spines.values()]
@@ -322,7 +325,10 @@ class OrientAnalysis():
             if len(self) % ncols != 0:
                 ax_colorbar = subfig.add_axes([0.3,0.56,0.5,0.04])
             else:
-                subfig = subfigs[-1,0]
+                if nrows == 1:
+                    subfig = subfigs[0]
+                else:
+                    subfig = subfigs[-1,0]
                 ax_colorbar = subfig.add_axes([0.6,-0.1,0.5,0.04])
             
             subfig.colorbar(

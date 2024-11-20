@@ -10,11 +10,11 @@ Estimate horizontal orientation of ocean-bottom seismograph
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7184189.svg)](https://doi.org/10.5281/zenodo.7184189)
 
-Copyright (c) 2022 Yasunori Sawaki[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391) All rights reserved.
+Copyright (c) 2022–2024 Yasunori Sawaki[![ORCID](https://orcid.org/sites/default/files/images/orcid_16x16.png)](https://orcid.org/0000-0002-4043-3391) All rights reserved.
 
 [`AzimPy`](https://github.com/yasuit21/AzimPy) is an open-source Python package for estimating the horizontal orientation of ocean-bottom seismographs. 
 This package performs the Rayleigh-wave polarization method (e.g., Stachnik+ 2012; Doran & Laske 2017). 
-One of the main classes `OrientOBS`, inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html),  searches an earthquake catalog for teleseismic events as a web client and computes Rayleigh-wave polarizations for each event–station pair. 
+One of the main classes `OrientOBS`, inherited from [`obspy.clients.fdsn.Client`](https://docs.obspy.org/packages/autogen/obspy.clients.fdsn.client.Client.html), searches an earthquake catalog for teleseismic events as a web client, and computes Rayleigh-wave polarizations for each event–station pair. 
 This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`) and functions for statistical analysis of circular data and plotting the estimated azimuths with uncertainties.
 
 ## Terms of use
@@ -22,7 +22,7 @@ This package also provides other classes (e.g., `OrientSingle`, `OrientAnalysis`
 - This package is under development, so any bug reports and suggestions are welcome! 
 
 #### Use cases
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., (2023) Seafloor depth controls seismograph orientation uncertainty, *Geophys. J. Int.*, 232(2), 1376–1392, https://doi.org/10.1093/gji/ggac397
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y. (2023), Seafloor depth controls seismograph orientation uncertainty, *Geophys. J. Int.*, 232(2), 1376–1392, https://doi.org/10.1093/gji/ggac397
 
 ## How to install
 
@@ -42,7 +42,7 @@ $ mamba activate azimpy-test
 ```
 $ mamba create -n azimpy-test python=3.10 jupyter
 $ mamba activate azimpy-test
-(azimpy-test) $ git clone -b v0.2.0 https://github.com/yasuit21/AzimPy.git
+(azimpy-test) $ git clone -b v0.3.0 https://github.com/yasuit21/AzimPy.git
 (azimpy-test) $ cd AzimPy
 (azimpy-test) $ python -m pip install .
 ```
@@ -291,14 +291,14 @@ The example uses multiple stations whose names are `stationAX`.
 
 
 ## Note
-- `SAC` format is only supported, but you may use some other formats.
+- `SAC` format is only supported, but you may use some other formats. Specify the function in `read_func` argument for `OrientOBS..find_stream()`.
 - The observed data files must be located in one directory, where `OrientOBS.find_stream()` will try to search for necessary input files. No waveform data in websites and repository are available in this package at this moment.
 - The author has tested this package in `Linux` environments (`CentOS 7` and `WSL Ubuntu 20.04`), so it might be incompatible when installed in `Windows`.
 - `rpy2` is an optional wrapper to run [`circular`](https://www.rdocumentation.org/packages/circular) in `R` language, which performs the Kuiper test.
 
 
 ### References
-- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, in press, https://doi.org/10.1093/gji/ggac397
+- Sawaki, Y., Yamashita, Y., Ohyanagi, S., Garcia, E.S.M., Ito, A., Sugioka, H., Takahashi, T., Shinohara, M., & Ito, Y., 2023, Seafloor Depth Controls Seismograph Orientation Uncertainty, *Geophys. J. Int.*, 232(2), 1376–1392, https://doi.org/10.1093/gji/ggac397
 - Stachnik, J.C., Sheehan, A.F., Zietlow, D.W., et al., 2012, Determination of New Zealand ocean bottom seismometer orientation via Rayleigh-wave polarization. *Seismol. Res. Lett.*, 83, 704–713. https://doi.org/10.1785/0220110128 
 - Doran, A.K. & Laske, G., 2017, Ocean‐bottom deismometer instrument orientations via automated Rayleigh‐wave arrival‐angle measurements. *Bull. Seismol. Soc. Am.*, 107, 691–708. https://doi.org/10.1785/0120160165 
 - Takagi, R., Uchida, N., Nakayama, T., et al., 2019, Estimation of the orientations of the S‐net cabled ocean‐bottom sensors. *Seismol. Res. Lett.*, 90, 2175–2187. https://doi.org/10.1785/0220190093
